@@ -76,5 +76,49 @@ dotnet add src/SmartTaskManagement.API/SmartTaskManagement.API.csproj reference 
 dotnet add src/SmartTaskManagement.API/SmartTaskManagement.API.csproj reference src/SmartTaskManagement.Infrastructure/SmartTaskManagement.Infrastructure.csproj
 ```
 
+## Step 9: Add Essential NuGet Packages
+### Infrastructure Project (for Entity Framework, Identity)
+
+```bash
+cd src/SmartTaskManagement.Infrastructure
+
+# Entity Framework Core
+dotnet add package Microsoft.EntityFrameworkCore
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer
+dotnet add package Microsoft.EntityFrameworkCore.Tools
+
+# Identity
+dotnet add package Microsoft.AspNetCore.Identity.EntityFrameworkCore
+
+# For JWT Authentication
+dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
+
+```
+
+### API Project
+
+```bash
+cd ../SmartTaskManagement.API
+
+# Swagger/OpenAPI
+dotnet add package Swashbuckle.AspNetCore
+
+# Entity Framework Design (for migrations)
+dotnet add package Microsoft.EntityFrameworkCore.Design
+
+```
 
 
+### Application Project (FluentValidation)
+
+```bash
+cd ../SmartTaskManagement.Application
+
+# For validation
+dotnet add package FluentValidation
+dotnet add package FluentValidation.DependencyInjectionExtensions
+
+# AutoMapper
+dotnet add package AutoMapper
+dotnet add package AutoMapper.Extensions.Microsoft.DependencyInjection
+```
