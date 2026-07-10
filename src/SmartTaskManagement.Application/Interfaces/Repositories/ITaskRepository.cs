@@ -8,7 +8,7 @@ namespace SmartTaskManagement.Application.Interfaces.Repositories
     {
         Task<IEnumerable<TaskItem>> GetTasksByProjectAsync(Guid projectId);
         Task<IEnumerable<TaskItem>> GetTasksByUserAsync(Guid userId);
-        Task<IEnumerable<TaskItem>> GetTasksByStatusAsync(TaskStatus status);
+        Task<IEnumerable<TaskItem>> GetTasksByStatusAsync(TaskItemStatus status);
         Task<IEnumerable<TaskItem>> GetTasksByPriorityAsync(TaskItemPriority priority);
         Task<IEnumerable<TaskItem>> GetOverdueTasksAsync();
         Task<IEnumerable<TaskItem>> SearchTasksAsync(string searchTerm);

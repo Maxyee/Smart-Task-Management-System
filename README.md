@@ -1002,3 +1002,555 @@ namespace SmartTaskManagement.Infrastructure.Services
 ```
 
 this is the end of Part 4
+
+# Part 5: Database Configuration
+## DbContext
+
+```cs
+// SmartTaskManagement.Infrastructure/Data/ApplicationDbContext.cs
+using Microsoft.EntityFrameworkCore;
+using SmartTaskManagement.Domain.Entities;
+using SmartTaskManagement.Domain.Enums;
+
+namespace SmartTaskManagement.Infrastructure.Data
+{
+    public class ApplicationDbContext : DbContext
+    {
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+            : base(options)
+        {
+        }
+
+        public DbSet<User> Users { get; set; }
+        public DbSet<Project> Projects { get; set; }
+        public DbSet<TaskItem> Tasks { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            // User Configuration
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.Email).IsUnique();
+                entity.HasIndex(e => e.Username).IsUnique();
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Username).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.FirstName).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.LastName).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.PasswordHash).IsRequired();
+                entity.Property(e => e.Role).IsRequired().HasConversion<int>();
+
+                // Seed admin user
+                entity.HasData(new User
+                {
+                    Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                    Email = "admin@smarttask.com",
+                    Username = "admin",
+                    FirstName = "System",
+                    LastName = "Admin",
+                    PasswordHash = "AQAAAAIAAYagAAAAEMy1zqjMv7g9Xh6sHv2nwS0jN1CkOxLzRqT3vW5bY2aG8fHg9JkLmNoPqRsTuVwXyZ", // Hashed "Admin@123"
+                    Role = UserRole.Admin,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            });
+
+            // Project Configuration
+            modelBuilder.Entity<Project>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Description).HasMaxLength(500);
+                entity.Property(e => e.StartDate).IsRequired();
+
+                entity.HasOne(e => e.CreatedByUser)
+                    .WithMany(e => e.Projects)
+                    .HasForeignKey(e => e.CreatedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // Task Configuration
+            modelBuilder.Entity<TaskItem>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+                entity.Property(e => e.Description).HasMaxLength(1000);
+                entity.Property(e => e.Status).IsRequired().HasConversion<int>();
+                entity.Property(e => e.Priority).IsRequired().HasConversion<int>();
+                entity.Property(e => e.DueDate).IsRequired();
+
+                entity.HasOne(e => e.Project)
+                    .WithMany(e => e.Tasks)
+                    .HasForeignKey(e => e.ProjectId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.AssignedToUser)
+                    .WithMany(e => e.AssignedTasks)
+                    .HasForeignKey(e => e.AssignedToUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.CreatedByUser)
+                    .WithMany()
+                    .HasForeignKey(e => e.CreatedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Indexes for performance
+                entity.HasIndex(e => e.ProjectId);
+                entity.HasIndex(e => e.AssignedToUserId);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.Priority);
+                entity.HasIndex(e => e.DueDate);
+            });
+        }
+    }
+}
+```
+
+
+## Repository Implementations
+
+### Generic Repository Implementation
+```cs
+// SmartTaskManagement.Infrastructure/Repositories/GenericRepository.cs
+using Microsoft.EntityFrameworkCore;
+using SmartTaskManagement.Application.Interfaces.Repositories;
+using SmartTaskManagement.Infrastructure.Data;
+using System.Linq.Expressions;
+
+
+namespace SmartTaskManagement.Infrastructure.Repositories
+{
+    public class GenericRepository<T> : IGenericRepository<T> where T : class
+    {
+        protected readonly ApplicationDbContext _context;
+        protected readonly DbSet<T> _dbSet;
+
+        public GenericRepository(ApplicationDbContext context)
+        {
+            _context = context;
+            _dbSet = context.Set<T>();
+        }
+
+        public virtual async Task<T?> GetByIdAsync(Guid id)
+        {
+            return await _dbSet.FindAsync(id);
+        }
+
+        public virtual async Task<IEnumerable<T>> GetAllAsync()
+        {
+            return await _dbSet.ToListAsync();
+        }
+
+        public virtual async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate)
+        {
+            return await _dbSet.Where(predicate).ToListAsync();
+        }
+
+        public virtual async Task<T> AddAsync(T entity)
+        {
+            await _dbSet.AddAsync(entity);
+            return entity;
+        }
+
+        public virtual void Update(T entity)
+        {
+            _dbSet.Update(entity);
+        }
+
+        public virtual void Delete(T entity)
+        {
+            _dbSet.Remove(entity);
+        }
+
+        public virtual async Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate)
+        {
+            return await _dbSet.AnyAsync(predicate);
+        }
+
+        public virtual async Task<int> CountAsync(Expression<Func<T, bool>>? predicate = null)
+        {
+            return predicate == null
+                ? await _dbSet.CountAsync()
+                : await _dbSet.CountAsync(predicate);
+        }
+
+        public virtual async Task<IEnumerable<T>> GetPagedAsync(
+            int pageNumber,
+            int pageSize,
+            Expression<Func<T, bool>>? predicate = null,
+            Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null)
+        {
+            var query = _dbSet.AsQueryable();
+
+            if (predicate != null)
+            {
+                query = query.Where(predicate);
+            }
+
+            if (orderBy != null)
+            {
+                query = orderBy(query);
+            }
+
+            return await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+        }
+    }
+}
+```
+
+### User Repository Implementation
+
+```cs
+// SmartTaskManagement.Infrastructure/Repositories/UserRepository.cs
+using Microsoft.EntityFrameworkCore;
+using SmartTaskManagement.Application.Interfaces.Repositories;
+using SmartTaskManagement.Domain.Entities;
+using SmartTaskManagement.Infrastructure.Data;
+
+
+namespace SmartTaskManagement.Infrastructure.Repositories
+{
+    public class UserRepository : GenericRepository<User>, IUserRepository
+    {
+        public UserRepository(ApplicationDbContext context) : base(context)
+        {
+        }
+
+        public async Task<User?> GetByEmailAsync(string email)
+        {
+            return await _dbSet.FirstOrDefaultAsync(u => u.Email == email && !u.IsDeleted);
+        }
+
+        public async Task<User?> GetByUsernameAsync(string username)
+        {
+            return await _dbSet.FirstOrDefaultAsync(u => u.Username == username && !u.IsDeleted);
+        }
+
+        public async Task<User?> GetByRefreshTokenAsync(string refreshToken)
+        {
+            return await _dbSet.FirstOrDefaultAsync(u =>
+                u.RefreshToken == refreshToken &&
+                !u.IsDeleted &&
+                u.RefreshTokenExpiryTime > DateTime.UtcNow);
+        }
+
+        public async Task<IEnumerable<User>> GetUsersByRoleAsync(string role)
+        {
+            return await _dbSet
+                .Where(u => u.Role.ToString() == role && !u.IsDeleted)
+                .ToListAsync();
+        }
+
+        public async Task<bool> IsEmailUniqueAsync(string email, Guid? excludeUserId = null)
+        {
+            var query = _dbSet.Where(u => u.Email == email && !u.IsDeleted);
+            if (excludeUserId.HasValue)
+            {
+                query = query.Where(u => u.Id != excludeUserId.Value);
+            }
+            return !await query.AnyAsync();
+        }
+
+        public async Task<bool> IsUsernameUniqueAsync(string username, Guid? excludeUserId = null)
+        {
+            var query = _dbSet.Where(u => u.Username == username && !u.IsDeleted);
+            if (excludeUserId.HasValue)
+            {
+                query = query.Where(u => u.Id != excludeUserId.Value);
+            }
+            return !await query.AnyAsync();
+        }
+    }
+}
+```
+
+###  Project Repository Implementation
+
+```cs
+// SmartTaskManagement.Infrastructure/Repositories/ProjectRepository.cs
+using Microsoft.EntityFrameworkCore;
+using SmartTaskManagement.Application.Interfaces.Repositories;
+using SmartTaskManagement.Domain.Entities;
+using SmartTaskManagement.Infrastructure.Data;
+
+namespace SmartTaskManagement.Infrastructure.Repositories
+{
+    public class ProjectRepository : GenericRepository<Project>, IProjectRepository
+    {
+        public ProjectRepository(ApplicationDbContext context) : base(context)
+        {
+        }
+
+        public async Task<IEnumerable<Project>> GetProjectsByUserAsync(Guid userId)
+        {
+            return await _dbSet
+                .Where(p => p.CreatedByUserId == userId && !p.IsDeleted)
+                .Include(p => p.CreatedByUser)
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Project>> GetActiveProjectsAsync()
+        {
+            return await _dbSet
+                .Where(p => p.IsActive && !p.IsDeleted)
+                .Include(p => p.CreatedByUser)
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Project>> SearchProjectsAsync(string searchTerm)
+        {
+            return await _dbSet
+                .Where(p => !p.IsDeleted &&
+                    (p.Name.Contains(searchTerm) ||
+                     p.Description.Contains(searchTerm)))
+                .Include(p => p.CreatedByUser)
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+        }
+
+        public async Task<Project?> GetProjectWithTasksAsync(Guid projectId)
+        {
+            return await _dbSet
+                .Include(p => p.Tasks.Where(t => !t.IsDeleted))
+                    .ThenInclude(t => t.AssignedToUser)
+                .Include(p => p.Tasks.Where(t => !t.IsDeleted))
+                    .ThenInclude(t => t.CreatedByUser)
+                .Include(p => p.CreatedByUser)
+                .FirstOrDefaultAsync(p => p.Id == projectId && !p.IsDeleted);
+        }
+
+        public async Task<int> GetProjectCountByUserAsync(Guid userId)
+        {
+            return await _dbSet
+                .CountAsync(p => p.CreatedByUserId == userId && !p.IsDeleted);
+        }
+    }
+}
+```
+
+### Task Repository Implementation
+
+```cs
+// SmartTaskManagement.Infrastructure/Repositories/TaskRepository.cs
+using Microsoft.EntityFrameworkCore;
+using SmartTaskManagement.Application.Interfaces.Repositories;
+using SmartTaskManagement.Domain.Entities;
+using SmartTaskManagement.Domain.Enums;
+using SmartTaskManagement.Infrastructure.Data;
+
+namespace SmartTaskManagement.Infrastructure.Repositories
+{
+    public class TaskRepository : GenericRepository<TaskItem>, ITaskRepository
+    {
+        public TaskRepository(ApplicationDbContext context) : base(context)
+        {
+        }
+
+        public async Task<IEnumerable<TaskItem>> GetTasksByProjectAsync(Guid projectId)
+        {
+            return await _dbSet
+                .Where(t => t.ProjectId == projectId && !t.IsDeleted)
+                .Include(t => t.AssignedToUser)
+                .Include(t => t.CreatedByUser)
+                .Include(t => t.Project)
+                .OrderByDescending(t => t.Priority)
+                .ThenBy(t => t.DueDate)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<TaskItem>> GetTasksByUserAsync(Guid userId)
+        {
+            return await _dbSet
+                .Where(t => t.AssignedToUserId == userId && !t.IsDeleted)
+                .Include(t => t.Project)
+                .Include(t => t.CreatedByUser)
+                .OrderByDescending(t => t.Priority)
+                .ThenBy(t => t.DueDate)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<TaskItem>> GetTasksByStatusAsync(TaskItemStatus status)
+        {
+            return await _dbSet
+                .Where(t => t.Status == status && !t.IsDeleted)
+                .Include(t => t.AssignedToUser)
+                .Include(t => t.Project)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<TaskItem>> GetTasksByPriorityAsync(TaskItemPriority priority)
+        {
+            return await _dbSet
+                .Where(t => t.Priority == priority && !t.IsDeleted)
+                .Include(t => t.AssignedToUser)
+                .Include(t => t.Project)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<TaskItem>> GetOverdueTasksAsync()
+        {
+            return await _dbSet
+                .Where(t => t.DueDate < DateTime.UtcNow &&
+                            t.Status != TaskItemStatus.Completed &&
+                            t.Status != TaskItemStatus.Cancelled &&
+                            !t.IsDeleted)
+                .Include(t => t.AssignedToUser)
+                .Include(t => t.Project)
+                .OrderBy(t => t.DueDate)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<TaskItem>> SearchTasksAsync(string searchTerm)
+        {
+            return await _dbSet
+                .Where(t => !t.IsDeleted &&
+                    (t.Title.Contains(searchTerm) ||
+                     t.Description.Contains(searchTerm)))
+                .Include(t => t.AssignedToUser)
+                .Include(t => t.Project)
+                .OrderBy(t => t.Title)
+                .ToListAsync();
+        }
+
+        public async Task<Dictionary<TaskItemStatus, int>> GetTaskStatusCountsAsync(Guid? projectId = null)
+        {
+            var query = _dbSet.Where(t => !t.IsDeleted);
+            if (projectId.HasValue)
+            {
+                query = query.Where(t => t.ProjectId == projectId.Value);
+            }
+
+            var counts = await query
+                .GroupBy(t => t.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Status, x => x.Count);
+
+            // Ensure all statuses are present
+            foreach (TaskItemStatus status in Enum.GetValues(typeof(TaskItemStatus)))
+            {
+                if (!counts.ContainsKey(status))
+                {
+                    counts[status] = 0;
+                }
+            }
+
+            return counts;
+        }
+
+        public async Task<Dictionary<TaskItemPriority, int>> GetTaskPriorityCountsAsync(Guid? projectId = null)
+        {
+            var query = _dbSet.Where(t => !t.IsDeleted);
+            if (projectId.HasValue)
+            {
+                query = query.Where(t => t.ProjectId == projectId.Value);
+            }
+
+            var counts = await query
+                .GroupBy(t => t.Priority)
+                .Select(g => new { Priority = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Priority, x => x.Count);
+
+            // Ensure all priorities are present
+            foreach (TaskItemPriority priority in Enum.GetValues(typeof(TaskItemPriority)))
+            {
+                if (!counts.ContainsKey(priority))
+                {
+                    counts[priority] = 0;
+                }
+            }
+
+            return counts;
+        }
+    }
+}
+```
+### Unit of Work Implementation
+
+```cs
+// SmartTaskManagement.Infrastructure/Repositories/UnitOfWork.cs
+using Microsoft.EntityFrameworkCore.Storage;
+using SmartTaskManagement.Application.Interfaces.Repositories;
+using SmartTaskManagement.Infrastructure.Data;
+
+namespace SmartTaskManagement.Infrastructure.Repositories
+{
+    public class UnitOfWork : IUnitOfWork
+    {
+        private readonly ApplicationDbContext _context;
+        private IDbContextTransaction? _transaction;
+        private bool _disposed;
+
+        public UnitOfWork(
+            ApplicationDbContext context,
+            IUserRepository userRepository,
+            IProjectRepository projectRepository,
+            ITaskRepository taskRepository)
+        {
+            _context = context;
+            Users = userRepository;
+            Projects = projectRepository;
+            Tasks = taskRepository;
+        }
+
+        public IUserRepository Users { get; }
+        public IProjectRepository Projects { get; }
+        public ITaskRepository Tasks { get; }
+
+        public async Task<int> CompleteAsync()
+        {
+            return await _context.SaveChangesAsync();
+        }
+
+        public async Task BeginTransactionAsync()
+        {
+            _transaction = await _context.Database.BeginTransactionAsync();
+        }
+
+        public async Task CommitTransactionAsync()
+        {
+            if (_transaction != null)
+            {
+                await _transaction.CommitAsync();
+                await _transaction.DisposeAsync();
+                _transaction = null;
+            }
+        }
+
+        public async Task RollbackTransactionAsync()
+        {
+            if (_transaction != null)
+            {
+                await _transaction.RollbackAsync();
+                await _transaction.DisposeAsync();
+                _transaction = null;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed && disposing)
+            {
+                _context.Dispose();
+                _transaction?.Dispose();
+            }
+            _disposed = true;
+        }
+    }
+}
+```
+
+This is the end of Part 5
