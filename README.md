@@ -34,3 +34,8 @@ dotnet new classlib -n SmartTaskManagement.Domain -f net10.0
 dotnet new classlib -n SmartTaskManagement.Application -f net10.0
 ```
 
+## Step 5: Create Infrastructure Project (Class Library)
+
+```bash
+dotnet new classlib -n SmartTaskManagement.Infrastructure -f net10.0
+```
