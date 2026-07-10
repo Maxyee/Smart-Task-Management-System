@@ -122,3 +122,69 @@ dotnet add package FluentValidation.DependencyInjectionExtensions
 dotnet add package AutoMapper
 dotnet add package AutoMapper.Extensions.Microsoft.DependencyInjection
 ```
+
+## Step 10: Create the Folder Structure
+
+```bash
+
+# Navigate back to root
+cd ../../
+
+# Create folder structure in each project
+
+# Domain folders
+mkdir src/SmartTaskManagement.Domain/Entities
+mkdir src/SmartTaskManagement.Domain/Enums
+mkdir src/SmartTaskManagement.Domain/Interfaces
+mkdir src/SmartTaskManagement.Domain/Common
+
+# Application folders
+mkdir src/SmartTaskManagement.Application/Common
+mkdir src/SmartTaskManagement.Application/DTOs
+mkdir src/SmartTaskManagement.Application/Features
+mkdir src/SmartTaskManagement.Application/Features/Auth
+mkdir src/SmartTaskManagement.Application/Features/Projects
+mkdir src/SmartTaskManagement.Application/Features/Tasks
+mkdir src/SmartTaskManagement.Application/Interfaces
+mkdir src/SmartTaskManagement.Application/Services
+
+# Infrastructure folders
+mkdir src/SmartTaskManagement.Infrastructure/Data
+mkdir src/SmartTaskManagement.Infrastructure/Identity
+mkdir src/SmartTaskManagement.Infrastructure/Services
+mkdir src/SmartTaskManagement.Infrastructure/Extensions
+
+# API folders
+mkdir src/SmartTaskManagement.API/Controllers
+mkdir src/SmartTaskManagement.API/Middleware
+mkdir src/SmartTaskManagement.API/Filters
+
+# Tests folder
+mkdir tests/SmartTaskManagement.Tests
+
+```
+
+## Step 11: Create Test Project (Optional)
+
+```bash
+
+cd tests/SmartTaskManagement.Tests
+# Create test project
+dotnet new xunit -n SmartTaskManagement.Tests -f net10.0
+
+
+# Navigate to the root 
+cd ../../
+
+
+# Add references to test project
+dotnet add tests/SmartTaskManagement.Tests/SmartTaskManagement.Tests.csproj reference src/SmartTaskManagement.Domain/SmartTaskManagement.Domain.csproj
+dotnet add tests/SmartTaskManagement.Tests/SmartTaskManagement.Tests.csproj reference src/SmartTaskManagement.Application/SmartTaskManagement.Application.csproj
+
+# Add test NuGet packages
+cd tests/SmartTaskManagement.Tests
+dotnet add package Microsoft.NET.Test.Sdk
+dotnet add package Moq
+dotnet add package FluentAssertions
+
+```
