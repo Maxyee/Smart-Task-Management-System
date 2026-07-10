@@ -45,3 +45,18 @@ dotnet new classlib -n SmartTaskManagement.Infrastructure -f net10.0
 ```bash
 dotnet new webapi -n SmartTaskManagement.API -f net10.0 --use-program-main
 ```
+
+## Step 7: Add Projects to Solution
+
+```bash
+
+# navigate to the root folder ./Smart-Task-Management-System
+cd ..
+
+# Add all projects to the solution
+dotnet sln add src/SmartTaskManagement.Domain/SmartTaskManagement.Domain.csproj
+dotnet sln add src/SmartTaskManagement.Application/SmartTaskManagement.Application.csproj
+dotnet sln add src/SmartTaskManagement.Infrastructure/SmartTaskManagement.Infrastructure.csproj
+dotnet sln add src/SmartTaskManagement.API/SmartTaskManagement.API.csproj
+
+```
