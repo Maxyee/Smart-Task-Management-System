@@ -572,3 +572,433 @@ namespace SmartTaskManagement.Application.Interfaces.Repositories
 ```
 
 This is the end of Part 3
+
+
+# Part 4 :  Infrastructure Layer - JWT Implementation
+## JWT Settings
+
+```cs
+// SmartTaskManagement.Infrastructure/Settings/JwtSettings.cs
+
+namespace SmartTaskManagement.Infrastructure.Settings
+{
+    public class JwtSettings
+    {
+        public string Secret { get; set; } = string.Empty;
+        public string Issuer { get; set; } = string.Empty;
+        public string Audience { get; set; } = string.Empty;
+        public int AccessTokenExpiryMinutes { get; set; }
+        public int RefreshTokenExpiryDays { get; set; }
+    }
+}
+
+
+```
+
+## Token Service Implementation
+
+```cs
+// SmartTaskManagement.Infrastructure/Services/TokenService.cs
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using SmartTaskManagement.Application.Interfaces.Services;
+using SmartTaskManagement.Infrastructure.Settings;
+
+
+namespace SmartTaskManagement.Infrastructure.Services
+{
+    public class TokenService : ITokenService
+    {
+        private readonly JwtSettings _jwtSettings;
+
+        public TokenService(IOptions<JwtSettings> jwtSettings)
+        {
+            _jwtSettings = jwtSettings.Value;
+        }
+
+        public string GenerateAccessToken(IEnumerable<Claim> claims)
+        {
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var token = new JwtSecurityToken(
+                issuer: _jwtSettings.Issuer,
+                audience: _jwtSettings.Audience,
+                claims: claims,
+                expires: DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpiryMinutes),
+                signingCredentials: creds
+            );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        public string GenerateRefreshToken()
+        {
+            var randomNumber = new byte[32];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+            return Convert.ToBase64String(randomNumber);
+        }
+
+        public ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
+        {
+            var tokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret)),
+                ValidateLifetime = false
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out var securityToken);
+
+            if (securityToken is not JwtSecurityToken jwtSecurityToken ||
+                !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256,
+                    StringComparison.InvariantCultureIgnoreCase))
+            {
+                throw new SecurityTokenException("Invalid token");
+            }
+
+            return principal;
+        }
+
+        public (string AccessToken, string RefreshToken) GenerateTokens(IEnumerable<Claim> claims)
+        {
+            var accessToken = GenerateAccessToken(claims);
+            var refreshToken = GenerateRefreshToken();
+            return (accessToken, refreshToken);
+        }
+
+        public int GetRefreshTokenExpiryDays()
+        {
+            return _jwtSettings.RefreshTokenExpiryDays;
+        }
+    }
+}
+```
+
+## Auth Service Implementation
+
+```cs
+// SmartTaskManagement.Infrastructure/Services/AuthService.cs
+
+using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
+using SmartTaskManagement.Application.Common;
+using SmartTaskManagement.Application.DTOs.Auth;
+using SmartTaskManagement.Application.Interfaces.Repositories;
+using SmartTaskManagement.Application.Interfaces.Services;
+using SmartTaskManagement.Domain.Entities;
+using SmartTaskManagement.Domain.Enums;
+
+
+namespace SmartTaskManagement.Infrastructure.Services
+{
+    public class AuthService : IAuthService
+    {
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly ITokenService _tokenService;
+        private readonly IPasswordHasher<User> _passwordHasher;
+        private readonly ILogger<AuthService> _logger;
+
+        public AuthService(
+            IUnitOfWork unitOfWork,
+            ITokenService tokenService,
+            IPasswordHasher<User> passwordHasher,
+            ILogger<AuthService> logger)
+        {
+            _unitOfWork = unitOfWork;
+            _tokenService = tokenService;
+            _passwordHasher = passwordHasher;
+            _logger = logger;
+        }
+
+        public async Task<Response<AuthResponseDto>> RegisterAsync(RegisterDto registerDto)
+        {
+            try
+            {
+                // Check if user exists
+                var existingUser = await _unitOfWork.Users
+                    .FindAsync(u => u.Email == registerDto.Email || u.Username == registerDto.Username);
+
+                if (existingUser.Any())
+                {
+                    return Response<AuthResponseDto>.FailureResponse(
+                        "User with this email or username already exists",
+                        409);
+                }
+
+                // Create new user
+                var user = new User
+                {
+                    Id = Guid.NewGuid(),
+                    Email = registerDto.Email,
+                    Username = registerDto.Username,
+                    FirstName = registerDto.FirstName,
+                    LastName = registerDto.LastName,
+                    Role = UserRole.TeamMember, // Default role
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                // Hash password
+                user.PasswordHash = _passwordHasher.HashPassword(user, registerDto.Password);
+
+                await _unitOfWork.Users.AddAsync(user);
+                await _unitOfWork.CompleteAsync();
+
+                // Generate tokens
+                var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Role, user.Role.ToString())
+            };
+
+                var (accessToken, refreshToken) = _tokenService.GenerateTokens(claims);
+
+                // Save refresh token
+                user.RefreshToken = refreshToken;
+                user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(
+                    _tokenService.GetRefreshTokenExpiryDays());
+
+                _unitOfWork.Users.Update(user);
+                await _unitOfWork.CompleteAsync();
+
+                var response = new AuthResponseDto
+                {
+                    Token = accessToken,
+                    RefreshToken = refreshToken,
+                    Email = user.Email,
+                    Username = user.Username,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Role = user.Role.ToString(),
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(
+                        _tokenService.GetRefreshTokenExpiryDays() * 24 * 60)
+                };
+
+                _logger.LogInformation("User {Username} registered successfully", user.Username);
+                return Response<AuthResponseDto>.SuccessResponse(response, "Registration successful");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during registration");
+                return Response<AuthResponseDto>.FailureResponse(
+                    "An error occurred during registration",
+                    500);
+            }
+        }
+
+        public async Task<Response<AuthResponseDto>> LoginAsync(LoginDto loginDto)
+        {
+            try
+            {
+                var user = await _unitOfWork.Users
+                    .FindAsync(u => u.Email == loginDto.Email)
+                    .ContinueWith(t => t.Result.FirstOrDefault());
+
+                if (user == null)
+                {
+                    return Response<AuthResponseDto>.FailureResponse("Invalid credentials", 401);
+                }
+
+                var passwordVerification = _passwordHasher.VerifyHashedPassword(
+                    user, user.PasswordHash, loginDto.Password);
+
+                if (passwordVerification == PasswordVerificationResult.Failed)
+                {
+                    return Response<AuthResponseDto>.FailureResponse("Invalid credentials", 401);
+                }
+
+                if (!user.IsActive)
+                {
+                    return Response<AuthResponseDto>.FailureResponse("Account is deactivated", 403);
+                }
+
+                var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Role, user.Role.ToString())
+            };
+
+                var (accessToken, refreshToken) = _tokenService.GenerateTokens(claims);
+
+                // Update refresh token
+                user.RefreshToken = refreshToken;
+                user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(
+                    _tokenService.GetRefreshTokenExpiryDays());
+                user.UpdatedAt = DateTime.UtcNow;
+
+                _unitOfWork.Users.Update(user);
+                await _unitOfWork.CompleteAsync();
+
+                var response = new AuthResponseDto
+                {
+                    Token = accessToken,
+                    RefreshToken = refreshToken,
+                    Email = user.Email,
+                    Username = user.Username,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Role = user.Role.ToString(),
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(
+                        _tokenService.GetRefreshTokenExpiryDays() * 24 * 60)
+                };
+
+                _logger.LogInformation("User {Username} logged in successfully", user.Username);
+                return Response<AuthResponseDto>.SuccessResponse(response, "Login successful");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during login");
+                return Response<AuthResponseDto>.FailureResponse(
+                    "An error occurred during login",
+                    500);
+            }
+        }
+
+        public async Task<Response<AuthResponseDto>> RefreshTokenAsync(RefreshTokenDto refreshTokenDto)
+        {
+            try
+            {
+                var principal = _tokenService.GetPrincipalFromExpiredToken(refreshTokenDto.Token);
+                var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Response<AuthResponseDto>.FailureResponse("Invalid token", 401);
+                }
+
+                var user = await _unitOfWork.Users.GetByIdAsync(Guid.Parse(userId));
+
+                if (user == null || user.RefreshToken != refreshTokenDto.RefreshToken ||
+                    user.RefreshTokenExpiryTime <= DateTime.UtcNow)
+                {
+                    return Response<AuthResponseDto>.FailureResponse("Invalid refresh token", 401);
+                }
+
+                var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Role, user.Role.ToString())
+            };
+
+                var (newAccessToken, newRefreshToken) = _tokenService.GenerateTokens(claims);
+
+                // Update refresh token
+                user.RefreshToken = newRefreshToken;
+                user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(
+                    _tokenService.GetRefreshTokenExpiryDays());
+                user.UpdatedAt = DateTime.UtcNow;
+
+                _unitOfWork.Users.Update(user);
+                await _unitOfWork.CompleteAsync();
+
+                var response = new AuthResponseDto
+                {
+                    Token = newAccessToken,
+                    RefreshToken = newRefreshToken,
+                    Email = user.Email,
+                    Username = user.Username,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Role = user.Role.ToString(),
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(
+                        _tokenService.GetRefreshTokenExpiryDays() * 24 * 60)
+                };
+
+                return Response<AuthResponseDto>.SuccessResponse(response, "Token refreshed successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during token refresh");
+                return Response<AuthResponseDto>.FailureResponse(
+                    "An error occurred during token refresh",
+                    500);
+            }
+        }
+
+        public async Task<Response<bool>> LogoutAsync(string refreshToken)
+        {
+            try
+            {
+                var user = await _unitOfWork.Users
+                    .FindAsync(u => u.RefreshToken == refreshToken)
+                    .ContinueWith(t => t.Result.FirstOrDefault());
+
+                if (user != null)
+                {
+                    user.RefreshToken = null;
+                    user.RefreshTokenExpiryTime = null;
+                    user.UpdatedAt = DateTime.UtcNow;
+
+                    _unitOfWork.Users.Update(user);
+                    await _unitOfWork.CompleteAsync();
+                }
+
+                return Response<bool>.SuccessResponse(true, "Logged out successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during logout");
+                return Response<bool>.FailureResponse(
+                    "An error occurred during logout",
+                    500);
+            }
+        }
+
+        public async Task<Response<bool>> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
+        {
+            try
+            {
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+
+                if (user == null)
+                {
+                    return Response<bool>.FailureResponse("User not found", 404);
+                }
+
+                var passwordVerification = _passwordHasher.VerifyHashedPassword(
+                    user, user.PasswordHash, currentPassword);
+
+                if (passwordVerification == PasswordVerificationResult.Failed)
+                {
+                    return Response<bool>.FailureResponse("Current password is incorrect", 401);
+                }
+
+                user.PasswordHash = _passwordHasher.HashPassword(user, newPassword);
+                user.UpdatedAt = DateTime.UtcNow;
+
+                _unitOfWork.Users.Update(user);
+                await _unitOfWork.CompleteAsync();
+
+                return Response<bool>.SuccessResponse(true, "Password changed successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during password change");
+                return Response<bool>.FailureResponse(
+                    "An error occurred while changing password",
+                    500);
+            }
+        }
+    }
+}
+
+```
+
+this is the end of Part 4
