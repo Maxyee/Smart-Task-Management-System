@@ -10,4 +10,10 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SmartTaskManagement.Domain\SmartTaskManagement.Domain.csproj" />
+    <ProjectReference Include="..\SmartTaskManagement.Application\SmartTaskManagement.Application.csproj" />
+    <ProjectReference Include="..\SmartTaskManagement.Infrastructure\SmartTaskManagement.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
