@@ -22,4 +22,11 @@ mkdir src
 cd src
 ```
 
+## Step 3: Create Domain Project (Class Library)
+
+```bash
+dotnet new classlib -n SmartTaskManagement.Domain -f net10.0
+```
+
+
 
