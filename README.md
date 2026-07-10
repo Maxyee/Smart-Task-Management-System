@@ -206,4 +206,146 @@ dotnet build
 This is the end of Part 1.
 
 
+# Part 2 : Domain Layer Implementation
+## Base Entity
+
+```cs
+// SmartTaskManagement.Domain/Common/BaseEntity.cs
+namespace SmartTaskManagement.Domain.Common
+{
+    public abstract class BaseEntity
+    {
+        public Guid Id { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public string? CreatedBy { get; set; }
+        public string? UpdatedBy { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+}
+```
+
+## Enums
+```cs
+// SmartTaskManagement.Domain/Enums/TaskItemStatus.cs
+
+namespace SmartTaskManagement.Domain.Enums
+{
+    public enum TaskItemStatus
+    {
+        ToDo = 0,
+        InProgress = 1,
+        Completed = 2,
+        Cancelled = 3
+    }
+}
+
+// SmartTaskManagement.Domain/Enums/TaskItemPriority.cs
+namespace SmartTaskManagement.Domain.Enums
+{
+    public enum TaskItemPriority
+    {
+        Low = 0,
+        Medium = 1,
+        High = 2,
+        Critical = 3
+    }
+}
+
+// SmartTaskManagement.Domain/Enums/Role.cs
+namespace SmartTaskManagement.Domain.Enums
+{
+    public enum UserRole
+    {
+        Admin = 0,
+        ProjectManager = 1,
+        TeamMember = 2
+    }
+}
+```
+
+## Domain Entities
+
+```cs
+// SmartTaskManagement.Domain/Entities/User.cs
+using SmartTaskManagement.Domain.Common;
+using SmartTaskManagement.Domain.Enums;
+
+namespace SmartTaskManagement.Domain.Entities
+{
+    public class User : BaseEntity
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string PasswordHash { get; set; } = string.Empty;
+        public UserRole Role { get; set; }
+        public string? RefreshToken { get; set; }
+        public DateTime? RefreshTokenExpiryTime { get; set; }
+        public bool IsActive { get; set; }
+
+        // Navigation Properties
+        public virtual ICollection<Project> Projects { get; set; } = new List<Project>();
+        public virtual ICollection<TaskItem> AssignedTasks { get; set; } = new List<TaskItem>();
+    }
+}
+
+
+// SmartTaskManagement.Domain/Entities/Project.cs
+using SmartTaskManagement.Domain.Common;
+
+namespace SmartTaskManagement.Domain.Entities
+{
+    public class Project : BaseEntity
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public bool IsActive { get; set; }
+
+        // Foreign Keys
+        public Guid CreatedByUserId { get; set; }
+
+        // Navigation Properties
+        public virtual User CreatedByUser { get; set; } = null!;
+        public virtual ICollection<TaskItem> Tasks { get; set; } = new List<TaskItem>();
+    }
+}
+
+// SmartTaskManagement.Domain/Entities/TaskItem.cs
+using SmartTaskManagement.Domain.Common;
+using SmartTaskManagement.Domain.Enums;
+
+namespace SmartTaskManagement.Domain.Entities
+{
+    public class TaskItem : BaseEntity
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public TaskItemStatus Status { get; set; }
+        public TaskItemPriority Priority { get; set; }
+        public DateTime DueDate { get; set; }
+        public int EstimatedHours { get; set; }
+        public int ActualHours { get; set; }
+
+        // Foreign Keys
+        public Guid ProjectId { get; set; }
+        public Guid? AssignedToUserId { get; set; }
+        public Guid CreatedByUserId { get; set; }
+
+        // Navigation Properties
+        public virtual Project Project { get; set; } = null!;
+        public virtual User AssignedToUser { get; set; } = null!;
+        public virtual User CreatedByUser { get; set; } = null!;
+    }
+}
+```
+## Bulil The project
+```bash
+# from the root folder run build
+dotnet build
+```
+This is the end of Part 2
 
