@@ -349,3 +349,226 @@ dotnet build
 ```
 This is the end of Part 2
 
+# Part 3 : Application Layer - DTOs and Interfaces
+## DTOs for Authentication
+
+```cs
+// SmartTaskManagement.Application/DTOs/Auth/RegisterDto.cs
+namespace SmartTaskManagement.Application.DTOs.Auth
+{
+    public class RegisterDto
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}
+
+// SmartTaskManagement.Application/DTOs/Auth/LoginDto.cs
+namespace SmartTaskManagement.Application.DTOs.Auth
+{
+    public class LoginDto
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}
+
+// SmartTaskManagement.Application/DTOs/Auth/AuthResponseDto.cs
+namespace SmartTaskManagement.Application.DTOs.Auth
+{
+    public class AuthResponseDto
+    {
+        public string Token { get; set; } = string.Empty;
+        public string RefreshToken { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+        public DateTime ExpiresAt { get; set; }
+    }
+}
+
+// SmartTaskManagement.Application/DTOs/Auth/RefreshTokenDto.cs
+namespace SmartTaskManagement.Application.DTOs.Auth
+{
+    public class RefreshTokenDto
+    {
+        public string Token { get; set; } = string.Empty;
+        public string RefreshToken { get; set; } = string.Empty;
+    }
+}
+```
+
+## Common Response Wrapper
+
+```cs
+// SmartTaskManagement.Application/Common/Response.cs
+namespace SmartTaskManagement.Application.Common
+{
+    public class Response<T>
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public T? Data { get; set; }
+        public List<string>? Errors { get; set; }
+        public int StatusCode { get; set; }
+
+        public static Response<T> SuccessResponse(T data, string message = "Operation successful")
+        {
+            return new Response<T>
+            {
+                Success = true,
+                Message = message,
+                Data = data,
+                StatusCode = 200
+            };
+        }
+
+        public static Response<T> FailureResponse(string message, int statusCode = 400, List<string>? errors = null)
+        {
+            return new Response<T>
+            {
+                Success = false,
+                Message = message,
+                Errors = errors,
+                StatusCode = statusCode
+            };
+        }
+    }
+}
+
+```
+
+## Application Interfaces
+
+```cs
+// SmartTaskManagement.Application/Interfaces/Services/IAuthService.cs
+using SmartTaskManagement.Application.Common;
+using SmartTaskManagement.Application.DTOs.Auth;
+
+namespace SmartTaskManagement.Application.Interfaces.Services
+{
+    public interface IAuthService
+    {
+        Task<Response<AuthResponseDto>> RegisterAsync(RegisterDto registerDto);
+        Task<Response<AuthResponseDto>> LoginAsync(LoginDto loginDto);
+        Task<Response<AuthResponseDto>> RefreshTokenAsync(RefreshTokenDto refreshTokenDto);
+        Task<Response<bool>> LogoutAsync(string refreshToken);
+        Task<Response<bool>> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword);
+    }
+
+}
+
+// SmartTaskManagement.Application/Interfaces/Services/ITokenService.cs
+using System.Security.Claims;
+
+namespace SmartTaskManagement.Application.Interfaces.Services
+{
+    public interface ITokenService
+    {
+        string GenerateAccessToken(IEnumerable<Claim> claims);
+        string GenerateRefreshToken();
+        ClaimsPrincipal GetPrincipalFromExpiredToken(string token);
+        (string AccessToken, string RefreshToken) GenerateTokens(IEnumerable<Claim> claims);
+        int GetRefreshTokenExpiryDays();
+    }
+
+}
+
+// SmartTaskManagement.Application/Interfaces/Repositories/IUnitOfWork.cs
+namespace SmartTaskManagement.Application.Interfaces.Repositories
+{
+    public interface IUnitOfWork : IDisposable
+    {
+        IUserRepository Users { get; }
+        IProjectRepository Projects { get; }
+        ITaskRepository Tasks { get; }
+        Task<int> CompleteAsync();
+        Task BeginTransactionAsync();
+        Task CommitTransactionAsync();
+        Task RollbackTransactionAsync();
+    }
+}
+
+// SmartTaskManagement.Application/Interfaces/Repositories/IUserRepository.cs
+using SmartTaskManagement.Domain.Entities;
+
+namespace SmartTaskManagement.Application.Interfaces.Repositories
+{
+    public interface IUserRepository : IGenericRepository<User>
+    {
+        Task<User?> GetByEmailAsync(string email);
+        Task<User?> GetByUsernameAsync(string username);
+        Task<User?> GetByRefreshTokenAsync(string refreshToken);
+        Task<IEnumerable<User>> GetUsersByRoleAsync(string role);
+        Task<bool> IsEmailUniqueAsync(string email, Guid? excludeUserId = null);
+        Task<bool> IsUsernameUniqueAsync(string username, Guid? excludeUserId = null);
+    }
+}
+
+
+// SmartTaskManagement.Application/Interfaces/Repositories/IProjectRepository.cs
+using SmartTaskManagement.Domain.Entities;
+
+
+namespace SmartTaskManagement.Application.Interfaces.Repositories
+{
+    public interface IProjectRepository : IGenericRepository<Project>
+{
+    Task<IEnumerable<Project>> GetProjectsByUserAsync(Guid userId);
+    Task<IEnumerable<Project>> GetActiveProjectsAsync();
+    Task<IEnumerable<Project>> SearchProjectsAsync(string searchTerm);
+    Task<Project?> GetProjectWithTasksAsync(Guid projectId);
+    Task<int> GetProjectCountByUserAsync(Guid userId);
+}
+}
+
+// SmartTaskManagement.Application/Interfaces/Repositories/ITaskRepository.cs
+using SmartTaskManagement.Domain.Entities;
+using SmartTaskManagement.Domain.Enums;
+
+
+namespace SmartTaskManagement.Application.Interfaces.Repositories
+{
+    public interface ITaskRepository : IGenericRepository<TaskItem>
+    {
+        Task<IEnumerable<TaskItem>> GetTasksByProjectAsync(Guid projectId);
+        Task<IEnumerable<TaskItem>> GetTasksByUserAsync(Guid userId);
+        Task<IEnumerable<TaskItem>> GetTasksByStatusAsync(TaskStatus status);
+        Task<IEnumerable<TaskItem>> GetTasksByPriorityAsync(TaskItemPriority priority);
+        Task<IEnumerable<TaskItem>> GetOverdueTasksAsync();
+        Task<IEnumerable<TaskItem>> SearchTasksAsync(string searchTerm);
+        Task<Dictionary<TaskItemStatus, int>> GetTaskStatusCountsAsync(Guid? projectId = null);
+        Task<Dictionary<TaskItemPriority, int>> GetTaskPriorityCountsAsync(Guid? projectId = null);
+    }
+}
+
+// SmartTaskManagement.Application/Interfaces/Repositories/IGenericRepository.cs
+using System.Linq.Expressions;
+
+namespace SmartTaskManagement.Application.Interfaces.Repositories
+{
+    public interface IGenericRepository<T> where T : class
+    {
+        Task<T?> GetByIdAsync(Guid id);
+        Task<IEnumerable<T>> GetAllAsync();
+        Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate);
+        Task<T> AddAsync(T entity);
+        void Update(T entity);
+        void Delete(T entity);
+        Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate);
+        Task<int> CountAsync(Expression<Func<T, bool>>? predicate = null);
+        Task<IEnumerable<T>> GetPagedAsync(int pageNumber, int pageSize,
+            Expression<Func<T, bool>>? predicate = null,
+            Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null);
+    }
+}
+
+```
+
+This is the end of Part 3
