@@ -1,3 +1,4 @@
+# Part 1: Architecture Design
 ## Step 1: Create the Solution and Project Structure
 
 First, create a new directory and solution:
@@ -188,3 +189,21 @@ dotnet add package Moq
 dotnet add package FluentAssertions
 
 ```
+
+## Step 12: Build and Restore the project
+
+```bash
+# Go back to solution root
+cd ../..
+
+# Restore all packages
+dotnet restore
+
+# Build the solution
+dotnet build
+
+```
+This is the end of Part 1.
+
+
+
