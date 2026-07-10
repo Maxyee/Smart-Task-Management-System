@@ -39,3 +39,9 @@ dotnet new classlib -n SmartTaskManagement.Application -f net10.0
 ```bash
 dotnet new classlib -n SmartTaskManagement.Infrastructure -f net10.0
 ```
+
+## Step 6: Create API Project (Web API with Program.cs Main method)
+
+```bash
+dotnet new webapi -n SmartTaskManagement.API -f net10.0 --use-program-main
+```
