@@ -28,5 +28,9 @@ cd src
 dotnet new classlib -n SmartTaskManagement.Domain -f net10.0
 ```
 
+## Step 4: Create Application Project (Class Library)
 
+```bash
+dotnet new classlib -n SmartTaskManagement.Application -f net10.0
+```
 
