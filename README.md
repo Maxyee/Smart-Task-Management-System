@@ -2025,3 +2025,65 @@ namespace SmartTaskManagement.API.Middleware
 ```
 
 This is the end of Part 6
+
+# Part 7 : Configuration Files
+## appsettings.json (SmartTaskManagement.API)
+```json
+
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=SmartTaskManagement;Trusted_Connection=True;MultipleActiveResultSets=true",
+    "DefaultConnection2": "Server=localhost\\SQLEXPRESS;Database=JwtAuthDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
+  },
+  "JwtSettings": {
+    "Secret": "YOUR-VERY-LONG-SECRET-KEY-HERE-MINIMUM-32-CHARACTERS",
+    "Issuer": "SmartTaskManagement",
+    "Audience": "SmartTaskManagementAPI",
+    "AccessTokenExpiryMinutes": 15,
+    "RefreshTokenExpiryDays": 7
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "System": "Warning"
+      }
+    }
+  },
+  "AllowedHosts": "*"
+}
+
+```
+
+## appsettings.Development.json (SmartTaskManagement.API)
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=SmartTaskManagement;Trusted_Connection=True;MultipleActiveResultSets=true",
+    "DefaultConnection2": "Server=localhost\\SQLEXPRESS;Database=JwtAuthDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
+  },
+  "JwtSettings": {
+    "Secret": "YourSuperSecretKeyForDevelopmentOnly12345!",
+    "Issuer": "SmartTaskManagement",
+    "Audience": "SmartTaskManagementAPI",
+    "AccessTokenExpiryMinutes": 15,
+    "RefreshTokenExpiryDays": 7
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  }
+}
+```
+
+This is the end of Part 7
+
