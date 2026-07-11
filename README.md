@@ -2914,3 +2914,35 @@ namespace SmartTaskManagement.Application.Mappings
 ```
 This is the end of Part 8
 
+# Part 9 : Database migration, build and run the project
+
+```bash
+# navigate to the Infrastracture project ./SmartTaskManagement.Infrastracture
+cd ./SmartTaskManagement.Infrastracture
+
+# Create and apply migrations
+dotnet ef migrations add InitialCreate --startup-project ../SmartTaskManagement.API
+
+# remove migrations (if needed use it, otherwise ignore)
+dotnet ef migrations remove --startup-project ../SmartTaskManagement.API
+
+# update database
+dotnet ef database update --startup-project ../SmartTaskManagement.API
+
+# for dropping database (if you need, otherwise ignore)
+dotnet ef database drop
+
+# For build the project navigate to the API project
+cd ../SmartTaskManagement.API
+
+# then build
+dotnet build
+
+# then run
+dotnet run
+
+# then visit the swagger url
+http://localhost:5027/swagger/index.html
+
+
+```
