@@ -160,6 +160,7 @@ public class Program
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<IAuthService, AuthService>();
         builder.Services.AddScoped<IProjectService, ProjectService>();
+        builder.Services.AddScoped<ITaskService, TaskService>();
 
         // Configure CORS
         builder.Services.AddCors(options =>
