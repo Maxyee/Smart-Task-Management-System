@@ -161,6 +161,7 @@ public class Program
         builder.Services.AddScoped<IAuthService, AuthService>();
         builder.Services.AddScoped<IProjectService, ProjectService>();
         builder.Services.AddScoped<ITaskService, TaskService>();
+        builder.Services.AddScoped<IDashboardService, DashboardService>();
 
         // Configure CORS
         builder.Services.AddCors(options =>
