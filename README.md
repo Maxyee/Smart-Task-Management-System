@@ -2085,5 +2085,21 @@ This is the end of Part 6
 }
 ```
 
+## build and run the API project
+```bash
+# first navigate to the API project
+cd ./SmartTaskManagement.API
+
+# build the project
+dotnet build
+
+# run the project
+dotnet run
+
+# is project is working or not visit the url below:
+http://localhost:5027/swagger/index.html
+
+```
+
 This is the end of Part 7
 
