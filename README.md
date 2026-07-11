@@ -2103,3 +2103,814 @@ http://localhost:5027/swagger/index.html
 
 This is the end of Part 7
 
+# Part 8 : Project Management Module
+
+## DTOs
+
+### Project DTOs
+
+```cs
+// SmartTaskManagement.Application/DTOs/Projects/ProjectDto.cs
+using SmartTaskManagement.Application.DTOs.Shared;
+
+namespace SmartTaskManagement.Application.DTOs.Projects
+{
+    public class ProjectDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public bool IsActive { get; set; }
+        public int TaskCount { get; set; }
+        public int CompletedTasks { get; set; }
+        public UserDto CreatedByUser { get; set; } = null!;
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+
+    public class CreateProjectDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+    }
+
+    public class UpdateProjectDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    public class ProjectFilterDto
+    {
+        public string? SearchTerm { get; set; }
+        public bool? IsActive { get; set; }
+        public DateTime? StartDateFrom { get; set; }
+        public DateTime? StartDateTo { get; set; }
+        public Guid? CreatedByUserId { get; set; }
+        public int PageNumber { get; set; } = 1;
+        public int PageSize { get; set; } = 10;
+        public string SortBy { get; set; } = "CreatedAt";
+        public bool SortDescending { get; set; } = true;
+    }
+
+    public class ProjectTaskSummaryDto
+    {
+        public Guid ProjectId { get; set; }
+        public string ProjectName { get; set; } = string.Empty;
+        public int TotalTasks { get; set; }
+        public int CompletedTasks { get; set; }
+        public int InProgressTasks { get; set; }
+        public int ToDoTasks { get; set; }
+        public int CancelledTasks { get; set; }
+        public double CompletionPercentage { get; set; }
+    }
+
+    public class PagedResponse<T>
+    {
+        public IEnumerable<T> Items { get; set; } = new List<T>();
+        public int PageNumber { get; set; }
+        public int PageSize { get; set; }
+        public int TotalCount { get; set; }
+        public int TotalPages { get; set; }
+        public bool HasPreviousPage => PageNumber > 1;
+        public bool HasNextPage => PageNumber < TotalPages;
+    }
+}
+```
+
+### User DTOs
+
+```cs
+namespace SmartTaskManagement.Application.DTOs.Shared
+{
+    public class UserDto
+    {
+        public Guid Id { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+    }
+
+}
+
+```
+
+## Services
+
+### Project Service Interface
+
+```cs
+
+// SmartTaskManagement.Application/Interfaces/Services/IProjectService.cs
+
+using SmartTaskManagement.Application.Common;
+using SmartTaskManagement.Application.DTOs.Projects;
+
+namespace SmartTaskManagement.Application.Interfaces.Services
+{
+    public interface IProjectService
+    {
+        Task<Response<ProjectDto>> CreateProjectAsync(CreateProjectDto createDto, Guid userId);
+        Task<Response<ProjectDto>> UpdateProjectAsync(Guid projectId, UpdateProjectDto updateDto, Guid userId);
+        Task<Response<bool>> DeleteProjectAsync(Guid projectId, Guid userId);
+        Task<Response<ProjectDto>> GetProjectByIdAsync(Guid projectId, Guid userId);
+        Task<Response<PagedResponse<ProjectDto>>> GetProjectsAsync(ProjectFilterDto filter, Guid userId);
+        Task<Response<ProjectTaskSummaryDto>> GetProjectTaskSummaryAsync(Guid projectId, Guid userId);
+        Task<Response<bool>> ToggleProjectStatusAsync(Guid projectId, Guid userId);
+    }
+}
+```
+
+### Project Service Implementation
+
+```cs
+// SmartTaskManagement.Infrastructure/Services/ProjectService.cs
+using Microsoft.Extensions.Logging;
+using SmartTaskManagement.Application.Common;
+using SmartTaskManagement.Application.DTOs.Projects;
+using SmartTaskManagement.Application.Interfaces.Repositories;
+using SmartTaskManagement.Application.Interfaces.Services;
+using SmartTaskManagement.Domain.Entities;
+using SmartTaskManagement.Domain.Enums;
+
+
+namespace SmartTaskManagement.Infrastructure.Services
+{
+    public class ProjectService : IProjectService
+    {
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<ProjectService> _logger;
+
+        public ProjectService(IUnitOfWork unitOfWork, ILogger<ProjectService> logger)
+        {
+            _unitOfWork = unitOfWork;
+            _logger = logger;
+        }
+
+        public async Task<Response<ProjectDto>> CreateProjectAsync(CreateProjectDto createDto, Guid userId)
+        {
+            try
+            {
+                // Validate user exists
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    return Response<ProjectDto>.FailureResponse("User not found", 404);
+                }
+
+                // Validate dates
+                if (createDto.EndDate.HasValue && createDto.EndDate < createDto.StartDate)
+                {
+                    return Response<ProjectDto>.FailureResponse("End date must be after start date", 400);
+                }
+
+                // Create project
+                var project = new Project
+                {
+                    Id = Guid.NewGuid(),
+                    Name = createDto.Name,
+                    Description = createDto.Description,
+                    StartDate = createDto.StartDate,
+                    EndDate = createDto.EndDate,
+                    IsActive = true,
+                    CreatedByUserId = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.Projects.AddAsync(project);
+                await _unitOfWork.CompleteAsync();
+
+                var projectDto = await MapToProjectDto(project);
+
+                _logger.LogInformation("Project {ProjectName} created by user {UserId}", project.Name, userId);
+                return Response<ProjectDto>.SuccessResponse(projectDto, "Project created successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating project for user {UserId}", userId);
+                return Response<ProjectDto>.FailureResponse("An error occurred while creating the project", 500);
+            }
+        }
+
+        public async Task<Response<ProjectDto>> UpdateProjectAsync(Guid projectId, UpdateProjectDto updateDto, Guid userId)
+        {
+            try
+            {
+                var project = await _unitOfWork.Projects.GetProjectWithTasksAsync(projectId);
+                if (project == null)
+                {
+                    return Response<ProjectDto>.FailureResponse("Project not found", 404);
+                }
+
+                // Check if user has permission (Admin or Project Owner)
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    return Response<ProjectDto>.FailureResponse("User not found", 404);
+                }
+
+                if (project.CreatedByUserId != userId && user.Role != UserRole.Admin)
+                {
+                    return Response<ProjectDto>.FailureResponse("You don't have permission to update this project", 403);
+                }
+
+                // Validate dates
+                if (updateDto.EndDate.HasValue && updateDto.EndDate < updateDto.StartDate)
+                {
+                    return Response<ProjectDto>.FailureResponse("End date must be after start date", 400);
+                }
+
+                // Update project
+                project.Name = updateDto.Name;
+                project.Description = updateDto.Description;
+                project.StartDate = updateDto.StartDate;
+                project.EndDate = updateDto.EndDate;
+                project.IsActive = updateDto.IsActive;
+                project.UpdatedAt = DateTime.UtcNow;
+                project.UpdatedBy = user.Username;
+
+                _unitOfWork.Projects.Update(project);
+                await _unitOfWork.CompleteAsync();
+
+                var projectDto = await MapToProjectDto(project);
+
+                _logger.LogInformation("Project {ProjectName} updated by user {UserId}", project.Name, userId);
+                return Response<ProjectDto>.SuccessResponse(projectDto, "Project updated successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating project {ProjectId} for user {UserId}", projectId, userId);
+                return Response<ProjectDto>.FailureResponse("An error occurred while updating the project", 500);
+            }
+        }
+
+        public async Task<Response<bool>> DeleteProjectAsync(Guid projectId, Guid userId)
+        {
+            try
+            {
+                var project = await _unitOfWork.Projects.GetByIdAsync(projectId);
+                if (project == null)
+                {
+                    return Response<bool>.FailureResponse("Project not found", 404);
+                }
+
+                // Check if user has permission (Admin or Project Owner)
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    return Response<bool>.FailureResponse("User not found", 404);
+                }
+
+                if (project.CreatedByUserId != userId && user.Role != UserRole.Admin)
+                {
+                    return Response<bool>.FailureResponse("You don't have permission to delete this project", 403);
+                }
+
+                // Soft delete
+                project.IsDeleted = true;
+                project.UpdatedAt = DateTime.UtcNow;
+                project.UpdatedBy = user.Username;
+
+                _unitOfWork.Projects.Update(project);
+                await _unitOfWork.CompleteAsync();
+
+                _logger.LogInformation("Project {ProjectName} deleted by user {UserId}", project.Name, userId);
+                return Response<bool>.SuccessResponse(true, "Project deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting project {ProjectId} for user {UserId}", projectId, userId);
+                return Response<bool>.FailureResponse("An error occurred while deleting the project", 500);
+            }
+        }
+
+        public async Task<Response<ProjectDto>> GetProjectByIdAsync(Guid projectId, Guid userId)
+        {
+            try
+            {
+                var project = await _unitOfWork.Projects.GetProjectWithTasksAsync(projectId);
+                if (project == null)
+                {
+                    return Response<ProjectDto>.FailureResponse("Project not found", 404);
+                }
+
+                // Check if user has permission to view
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    return Response<ProjectDto>.FailureResponse("User not found", 404);
+                }
+
+                if (project.CreatedByUserId != userId &&
+                    user.Role != UserRole.Admin &&
+                    user.Role != UserRole.ProjectManager)
+                {
+                    return Response<ProjectDto>.FailureResponse("You don't have permission to view this project", 403);
+                }
+
+                var projectDto = await MapToProjectDto(project);
+                return Response<ProjectDto>.SuccessResponse(projectDto, "Project retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving project {ProjectId} for user {UserId}", projectId, userId);
+                return Response<ProjectDto>.FailureResponse("An error occurred while retrieving the project", 500);
+            }
+        }
+
+        public async Task<Response<PagedResponse<ProjectDto>>> GetProjectsAsync(ProjectFilterDto filter, Guid userId)
+        {
+            try
+            {
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    return Response<PagedResponse<ProjectDto>>.FailureResponse("User not found", 404);
+                }
+
+                // Build query
+                var query = _unitOfWork.Projects.FindAsync(p => !p.IsDeleted);
+
+                // Apply filters
+                var projects = await query;
+                var filteredProjects = projects.AsQueryable();
+
+                if (!string.IsNullOrWhiteSpace(filter.SearchTerm))
+                {
+                    filteredProjects = filteredProjects.Where(p =>
+                        p.Name.Contains(filter.SearchTerm) ||
+                        p.Description.Contains(filter.SearchTerm));
+                }
+
+                if (filter.IsActive.HasValue)
+                {
+                    filteredProjects = filteredProjects.Where(p => p.IsActive == filter.IsActive.Value);
+                }
+
+                if (filter.StartDateFrom.HasValue)
+                {
+                    filteredProjects = filteredProjects.Where(p => p.StartDate >= filter.StartDateFrom.Value);
+                }
+
+                if (filter.StartDateTo.HasValue)
+                {
+                    filteredProjects = filteredProjects.Where(p => p.StartDate <= filter.StartDateTo.Value);
+                }
+
+                // Apply user filter for non-admins
+                if (user.Role != UserRole.Admin)
+                {
+                    filteredProjects = filteredProjects.Where(p => p.CreatedByUserId == userId);
+                }
+                else if (filter.CreatedByUserId.HasValue)
+                {
+                    filteredProjects = filteredProjects.Where(p => p.CreatedByUserId == filter.CreatedByUserId.Value);
+                }
+
+                // Apply sorting
+                filteredProjects = ApplySorting(filteredProjects, filter.SortBy, filter.SortDescending);
+
+                // Get total count
+                var totalCount = filteredProjects.Count();
+
+                // Apply pagination
+                var pagedProjects = filteredProjects
+                    .Skip((filter.PageNumber - 1) * filter.PageSize)
+                    .Take(filter.PageSize)
+                    .ToList();
+
+                // Map to DTOs
+                var projectDtos = new List<ProjectDto>();
+                foreach (var project in pagedProjects)
+                {
+                    var dto = await MapToProjectDto(project);
+                    projectDtos.Add(dto);
+                }
+
+                var response = new PagedResponse<ProjectDto>
+                {
+                    Items = projectDtos,
+                    PageNumber = filter.PageNumber,
+                    PageSize = filter.PageSize,
+                    TotalCount = totalCount,
+                    TotalPages = (int)Math.Ceiling(totalCount / (double)filter.PageSize)
+                };
+
+                return Response<PagedResponse<ProjectDto>>.SuccessResponse(response, "Projects retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving projects for user {UserId}", userId);
+                return Response<PagedResponse<ProjectDto>>.FailureResponse(
+                    "An error occurred while retrieving projects", 500);
+            }
+        }
+
+        public async Task<Response<ProjectTaskSummaryDto>> GetProjectTaskSummaryAsync(Guid projectId, Guid userId)
+        {
+            try
+            {
+                var project = await _unitOfWork.Projects.GetProjectWithTasksAsync(projectId);
+                if (project == null)
+                {
+                    return Response<ProjectTaskSummaryDto>.FailureResponse("Project not found", 404);
+                }
+
+                var activeTasks = project.Tasks.Where(t => !t.IsDeleted).ToList();
+                var totalTasks = activeTasks.Count;
+                var completedTasks = activeTasks.Count(t => t.Status == TaskItemStatus.Completed);
+                var inProgressTasks = activeTasks.Count(t => t.Status == TaskItemStatus.InProgress);
+                var toDoTasks = activeTasks.Count(t => t.Status == TaskItemStatus.ToDo);
+                var cancelledTasks = activeTasks.Count(t => t.Status == TaskItemStatus.Cancelled);
+
+                var summary = new ProjectTaskSummaryDto
+                {
+                    ProjectId = project.Id,
+                    ProjectName = project.Name,
+                    TotalTasks = totalTasks,
+                    CompletedTasks = completedTasks,
+                    InProgressTasks = inProgressTasks,
+                    ToDoTasks = toDoTasks,
+                    CancelledTasks = cancelledTasks,
+                    CompletionPercentage = totalTasks > 0
+                        ? Math.Round((double)completedTasks / totalTasks * 100, 2)
+                        : 0
+                };
+
+                return Response<ProjectTaskSummaryDto>.SuccessResponse(summary, "Project summary retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving project summary for project {ProjectId}", projectId);
+                return Response<ProjectTaskSummaryDto>.FailureResponse(
+                    "An error occurred while retrieving project summary", 500);
+            }
+        }
+
+        public async Task<Response<bool>> ToggleProjectStatusAsync(Guid projectId, Guid userId)
+        {
+            try
+            {
+                var project = await _unitOfWork.Projects.GetByIdAsync(projectId);
+                if (project == null)
+                {
+                    return Response<bool>.FailureResponse("Project not found", 404);
+                }
+
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    return Response<bool>.FailureResponse("User not found", 404);
+                }
+
+                if (project.CreatedByUserId != userId && user.Role != UserRole.Admin)
+                {
+                    return Response<bool>.FailureResponse("You don't have permission to modify this project", 403);
+                }
+
+                project.IsActive = !project.IsActive;
+                project.UpdatedAt = DateTime.UtcNow;
+                project.UpdatedBy = user.Username;
+
+                _unitOfWork.Projects.Update(project);
+                await _unitOfWork.CompleteAsync();
+
+                var status = project.IsActive ? "activated" : "deactivated";
+                _logger.LogInformation("Project {ProjectName} {Status} by user {UserId}", project.Name, status, userId);
+                return Response<bool>.SuccessResponse(true, $"Project {status} successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling project status for project {ProjectId}", projectId);
+                return Response<bool>.FailureResponse("An error occurred while toggling project status", 500);
+            }
+        }
+
+        #region Private Methods
+
+        private async Task<ProjectDto> MapToProjectDto(Project project)
+        {
+            var activeTasks = project.Tasks?.Where(t => !t.IsDeleted).ToList() ?? new List<TaskItem>();
+            var completedTasks = activeTasks.Count(t => t.Status == TaskItemStatus.Completed);
+
+            return new ProjectDto
+            {
+                Id = project.Id,
+                Name = project.Name,
+                Description = project.Description,
+                StartDate = project.StartDate,
+                EndDate = project.EndDate,
+                IsActive = project.IsActive,
+                TaskCount = activeTasks.Count,
+                CompletedTasks = completedTasks,
+                CreatedAt = project.CreatedAt,
+                UpdatedAt = project.UpdatedAt,
+                CreatedByUser = new Application.DTOs.Shared.UserDto
+                {
+                    Id = project.CreatedByUser?.Id ?? Guid.Empty,
+                    Email = project.CreatedByUser?.Email ?? string.Empty,
+                    Username = project.CreatedByUser?.Username ?? string.Empty,
+                    FirstName = project.CreatedByUser?.FirstName ?? string.Empty,
+                    LastName = project.CreatedByUser?.LastName ?? string.Empty,
+                    Role = project.CreatedByUser?.Role.ToString() ?? string.Empty
+                }
+            };
+        }
+
+        private IQueryable<Project> ApplySorting(IQueryable<Project> query, string sortBy, bool sortDescending)
+        {
+            return sortBy.ToLower() switch
+            {
+                "name" => sortDescending
+                    ? query.OrderByDescending(p => p.Name)
+                    : query.OrderBy(p => p.Name),
+                "startdate" => sortDescending
+                    ? query.OrderByDescending(p => p.StartDate)
+                    : query.OrderBy(p => p.StartDate),
+                "enddate" => sortDescending
+                    ? query.OrderByDescending(p => p.EndDate)
+                    : query.OrderBy(p => p.EndDate),
+                "isactive" => sortDescending
+                    ? query.OrderByDescending(p => p.IsActive)
+                    : query.OrderBy(p => p.IsActive),
+                "taskcount" => sortDescending
+                    ? query.OrderByDescending(p => p.Tasks.Count(t => !t.IsDeleted))
+                    : query.OrderBy(p => p.Tasks.Count(t => !t.IsDeleted)),
+                _ => sortDescending
+                    ? query.OrderByDescending(p => p.CreatedAt)
+                    : query.OrderBy(p => p.CreatedAt)
+            };
+        }
+
+        #endregion
+    }
+}
+
+```
+
+## Project Controller
+
+```cs
+// SmartTaskManagement.API/Controllers/ProjectsController.cs
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using SmartTaskManagement.Application.Common;
+using SmartTaskManagement.Application.DTOs.Projects;
+using SmartTaskManagement.Application.Interfaces.Services;
+using System.Security.Claims;
+
+
+namespace SmartTaskManagement.API.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class ProjectsController : ControllerBase
+    {
+        private readonly IProjectService _projectService;
+        private readonly ILogger<ProjectsController> _logger;
+
+        public ProjectsController(IProjectService projectService, ILogger<ProjectsController> logger)
+        {
+            _projectService = projectService;
+            _logger = logger;
+        }
+
+        /// <summary>
+        /// Create a new project
+        /// </summary>
+        [HttpPost]
+        [Authorize(Roles = "Admin,ProjectManager")]
+        public async Task<IActionResult> CreateProject([FromBody] CreateProjectDto createDto)
+        {
+            var userId = GetUserId();
+            var result = await _projectService.CreateProjectAsync(createDto, userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Update an existing project
+        /// </summary>
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateProject(Guid id, [FromBody] UpdateProjectDto updateDto)
+        {
+            var userId = GetUserId();
+            var result = await _projectService.UpdateProjectAsync(id, updateDto, userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Delete a project (soft delete)
+        /// </summary>
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteProject(Guid id)
+        {
+            var userId = GetUserId();
+            var result = await _projectService.DeleteProjectAsync(id, userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Get project by ID
+        /// </summary>
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetProject(Guid id)
+        {
+            var userId = GetUserId();
+            var result = await _projectService.GetProjectByIdAsync(id, userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Get all projects with filtering and pagination
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetProjects([FromQuery] ProjectFilterDto filter)
+        {
+            var userId = GetUserId();
+            var result = await _projectService.GetProjectsAsync(filter, userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Get project task summary
+        /// </summary>
+        [HttpGet("{id}/summary")]
+        public async Task<IActionResult> GetProjectSummary(Guid id)
+        {
+            var userId = GetUserId();
+            var result = await _projectService.GetProjectTaskSummaryAsync(id, userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        /// <summary>
+        /// Toggle project active status
+        /// </summary>
+        [HttpPatch("{id}/toggle-status")]
+        public async Task<IActionResult> ToggleProjectStatus(Guid id)
+        {
+            var userId = GetUserId();
+            var result = await _projectService.ToggleProjectStatusAsync(id, userId);
+            return StatusCode(result.StatusCode, result);
+        }
+
+        #region Private Methods
+
+        private Guid GetUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                throw new UnauthorizedAccessException("User ID not found in token");
+            }
+            return Guid.Parse(userIdClaim);
+        }
+
+        #endregion
+    }
+}
+```
+
+## FluentValidation for Project DTOs
+```cs
+// SmartTaskManagement.Application/Validators/ProjectValidators.cs
+
+using FluentValidation;
+using SmartTaskManagement.Application.DTOs.Projects;
+
+namespace SmartTaskManagement.Application.Validators
+{
+    public class CreateProjectDtoValidator : AbstractValidator<CreateProjectDto>
+    {
+        public CreateProjectDtoValidator()
+        {
+            RuleFor(x => x.Name)
+                .NotEmpty().WithMessage("Project name is required")
+                .MaximumLength(100).WithMessage("Project name cannot exceed 100 characters");
+
+            RuleFor(x => x.Description)
+                .MaximumLength(500).WithMessage("Description cannot exceed 500 characters");
+
+            RuleFor(x => x.StartDate)
+                .NotEmpty().WithMessage("Start date is required")
+                .LessThanOrEqualTo(DateTime.UtcNow.AddYears(1))
+                .WithMessage("Start date cannot be more than 1 year in the future");
+
+            RuleFor(x => x)
+                .Must(x => !x.EndDate.HasValue || x.EndDate > x.StartDate)
+                .WithMessage("End date must be after start date");
+        }
+    }
+
+    public class UpdateProjectDtoValidator : AbstractValidator<UpdateProjectDto>
+    {
+        public UpdateProjectDtoValidator()
+        {
+            RuleFor(x => x.Name)
+                .NotEmpty().WithMessage("Project name is required")
+                .MaximumLength(100).WithMessage("Project name cannot exceed 100 characters");
+
+            RuleFor(x => x.Description)
+                .MaximumLength(500).WithMessage("Description cannot exceed 500 characters");
+
+            RuleFor(x => x.StartDate)
+                .NotEmpty().WithMessage("Start date is required");
+
+            RuleFor(x => x)
+                .Must(x => !x.EndDate.HasValue || x.EndDate > x.StartDate)
+                .WithMessage("End date must be after start date");
+        }
+    }
+
+    public class ProjectFilterDtoValidator : AbstractValidator<ProjectFilterDto>
+    {
+        public ProjectFilterDtoValidator()
+        {
+            RuleFor(x => x.PageNumber)
+                .GreaterThan(0).WithMessage("Page number must be greater than 0");
+
+            RuleFor(x => x.PageSize)
+                .InclusiveBetween(1, 100).WithMessage("Page size must be between 1 and 100");
+
+            RuleFor(x => x.SearchTerm)
+                .MaximumLength(100).WithMessage("Search term cannot exceed 100 characters");
+
+            RuleFor(x => x.SortBy)
+                .Must(x => string.IsNullOrEmpty(x) ||
+                    new[] { "name", "startdate", "enddate", "isactive", "taskcount", "createdat" }
+                        .Contains(x.ToLower()))
+                .WithMessage("Invalid sort field");
+        }
+    }
+}
+```
+
+## Register Services in Program.cs
+
+Add these services to your Program.cs:
+```cs
+
+// Add FluentValidation
+builder.Services.AddValidatorsFromAssemblyContaining<CreateProjectDtoValidator>();
+
+// Register Services
+builder.Services.AddScoped<IProjectService, ProjectService>();
+
+// Add AutoMapper (if you want to use it instead of manual mapping)
+builder.Services.AddAutoMapper(typeof(Program));
+
+```
+
+## AutoMapper Profile (Optional)
+
+```cs
+// SmartTaskManagement.Application/Mappings/MappingProfile.cs
+using AutoMapper;
+using SmartTaskManagement.Application.DTOs.Projects;
+using SmartTaskManagement.Application.DTOs.Shared;
+using SmartTaskManagement.Domain.Entities;
+
+namespace SmartTaskManagement.Application.Mappings
+{
+    public class MappingProfile : Profile
+    {
+        public MappingProfile()
+        {
+            CreateMap<Project, ProjectDto>()
+                .ForMember(dest => dest.TaskCount,
+                    opt => opt.MapFrom(src => src.Tasks.Count(t => !t.IsDeleted)))
+                .ForMember(dest => dest.CompletedTasks,
+                    opt => opt.MapFrom(src => src.Tasks.Count(t => !t.IsDeleted && t.Status == Domain.Enums.TaskItemStatus.Completed)))
+                .ForMember(dest => dest.CreatedByUser,
+                    opt => opt.MapFrom(src => src.CreatedByUser));
+
+            CreateMap<User, UserDto>();
+
+            CreateMap<CreateProjectDto, Project>()
+                .ForMember(dest => dest.Id, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedByUserId, opt => opt.Ignore())
+                .ForMember(dest => dest.IsActive, opt => opt.MapFrom(src => true));
+
+            CreateMap<UpdateProjectDto, Project>()
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedByUserId, opt => opt.Ignore());
+        }
+    }
+}
+```
+This is the end of Part 8
+

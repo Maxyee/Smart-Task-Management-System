@@ -18,6 +18,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi;
+using FluentValidation;
+using SmartTaskManagement.Application.Validators;
 
 
 namespace SmartTaskManagement.API;
@@ -142,6 +144,9 @@ public class Program
                 policy.RequireRole("Admin", "ProjectManager", "TeamMember"));
         });
 
+        // Add FluentValidation
+        builder.Services.AddValidatorsFromAssemblyContaining<CreateProjectDtoValidator>();
+
         // Configure Password Hasher
         builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
@@ -154,6 +159,7 @@ public class Program
         // Register Services
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<IAuthService, AuthService>();
+        builder.Services.AddScoped<IProjectService, ProjectService>();
 
         // Configure CORS
         builder.Services.AddCors(options =>
@@ -182,6 +188,9 @@ public class Program
                 opt.QueueLimit = 2;
             });
         });
+
+        // Add AutoMapper (if you want to use it instead of manual mapping)
+        builder.Services.AddAutoMapper(typeof(Program));
 
 
         // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
