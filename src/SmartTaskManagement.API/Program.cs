@@ -38,7 +38,7 @@ public class Program
             .WriteTo.File("logs/smarttask-.txt", rollingInterval: RollingInterval.Day)
             .CreateLogger();
 
-        builder.Host.UseSerilog();
+        builder.Host.UseSerilog();        
 
         // Add services to the container.
         builder.Services.AddAuthorization();
@@ -98,6 +98,20 @@ public class Program
         builder.Services.Configure<JwtSettings>(jwtSettings);
 
         var key = Encoding.UTF8.GetBytes(jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT Secret not configured"));
+
+        // Configure AI Settings
+        var aiSettings = builder.Configuration.GetSection("AiSettings");
+        builder.Services.Configure<AiSettings>(aiSettings);
+
+        // Add HttpClient for AI service
+        builder.Services.AddHttpClient<IAiService, AiService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+
+        // Add Memory Cache for AI responses
+        builder.Services.AddMemoryCache();
+
 
         // Configure Authentication
         builder.Services.AddAuthentication(options =>
@@ -162,6 +176,7 @@ public class Program
         builder.Services.AddScoped<IProjectService, ProjectService>();
         builder.Services.AddScoped<ITaskService, TaskService>();
         builder.Services.AddScoped<IDashboardService, DashboardService>();
+        builder.Services.AddScoped<IAiService, AiService>();
 
         // Configure CORS
         builder.Services.AddCors(options =>

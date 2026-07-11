@@ -7,6 +7,8 @@ using SmartTaskManagement.Domain.Entities;
 using SmartTaskManagement.Domain.Enums;
 using SmartTaskManagement.Application.DTOs.Projects;
 using SmartTaskManagement.Application.DTOs.Shared;
+using SmartTaskManagement.Application.DTOs.Helper;
+using SmartTaskManagement.Application.DTOs.AI;
 
 
 namespace SmartTaskManagement.Infrastructure.Services
@@ -16,10 +18,13 @@ namespace SmartTaskManagement.Infrastructure.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<TaskService> _logger;
 
-        public TaskService(IUnitOfWork unitOfWork, ILogger<TaskService> logger)
+        private readonly IAiService _aiService;
+
+        public TaskService(IUnitOfWork unitOfWork, ILogger<TaskService> logger, IAiService aiService)
         {
             _unitOfWork = unitOfWork;
             _logger = logger;
+            _aiService = aiService;
         }
 
         public async Task<Response<TaskDto>> CreateTaskAsync(CreateTaskDto createDto, Guid userId)
@@ -793,6 +798,78 @@ namespace SmartTaskManagement.Infrastructure.Services
             }
         }
 
+        public async Task<Response<TaskDto>> ImproveTaskDescriptionAsync(Guid taskId, TaskImprovementOptionsDto options, Guid userId)
+        {
+            try
+            {
+                var task = await _unitOfWork.Tasks.GetByIdAsync(taskId);
+                if (task == null || task.IsDeleted)
+                {
+                    return Response<TaskDto>.FailureResponse("Task not found", 404);
+                }
+
+                // Check permission
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    return Response<TaskDto>.FailureResponse("User not found", 404);
+                }
+
+                if (!await HasTaskPermission(task, userId, user.Role))
+                {
+                    return Response<TaskDto>.FailureResponse(
+                        "You don't have permission to modify this task", 403);
+                }
+
+                // Call AI service
+                var request = new TaskImprovementRequestDto
+                {
+                    OriginalTitle = task.Title,
+                    OriginalDescription = task.Description,
+                    Options = new ImprovementOptions
+                    {
+                        CorrectGrammar = options.CorrectGrammar,
+                        ImproveClarity = options.ImproveClarity,
+                        MakeProfessional = options.MakeProfessional,
+                        ExpandDescription = options.ExpandDescription,
+                        MakeActionable = options.MakeActionable,
+                        Tone = options.Tone ?? "Professional"
+                    }
+                };
+
+                var aiResult = await _aiService.ImproveTaskDescriptionAsync(request, userId);
+
+                if (!aiResult.Success)
+                {
+                    return Response<TaskDto>.FailureResponse(
+                        $"AI improvement failed: {aiResult.Message}", 500);
+                }
+
+                // Update task with improved content
+                task.Title = aiResult.Data!.ImprovedTitle;
+                task.Description = aiResult.Data.ImprovedDescription;
+                task.UpdatedAt = DateTime.UtcNow;
+                task.UpdatedBy = user.Username;
+
+                _unitOfWork.Tasks.Update(task);
+                await _unitOfWork.CompleteAsync();
+
+                var taskDto = await MapToTaskDto(task);
+
+                _logger.LogInformation("Task {TaskTitle} improved by AI for user {UserId}",
+                    task.Title, userId);
+
+                return Response<TaskDto>.SuccessResponse(taskDto,
+                    "Task description improved successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error improving task {TaskId} by AI for user {UserId}",
+                    taskId, userId);
+                return Response<TaskDto>.FailureResponse(
+                    "An error occurred while improving the task", 500);
+            }
+        }
         #region Private Methods
 
         private async Task<TaskDto> MapToTaskDto(TaskItem task)
