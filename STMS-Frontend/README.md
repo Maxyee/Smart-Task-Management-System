@@ -644,4 +644,167 @@ export class AuthService {
     }
   }
 }
+
+
+// src/app/core/services/notification.service.ts
+import { Injectable } from '@angular/core';
+import { Subject } from 'rxjs';
+
+export interface Notification {
+  type: 'success' | 'error' | 'warning' | 'info';
+  message: string;
+  duration?: number;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class NotificationService {
+  private notificationSubject = new Subject<Notification>();
+  public notifications$ = this.notificationSubject.asObservable();
+
+  success(message: string, duration: number = 3000): void {
+    this.notificationSubject.next({ type: 'success', message, duration });
+  }
+
+  error(message: string, duration: number = 5000): void {
+    this.notificationSubject.next({ type: 'error', message, duration });
+  }
+
+  warning(message: string, duration: number = 4000): void {
+    this.notificationSubject.next({ type: 'warning', message, duration });
+  }
+
+  info(message: string, duration: number = 3000): void {
+    this.notificationSubject.next({ type: 'info', message, duration });
+  }
+}
+```
+
+# Part 4 : HTTP Interceptor
+```ts
+// src/app/core/interceptors/auth.interceptor.ts
+import { Injectable } from '@angular/core';
+import {
+  HttpInterceptor,
+  HttpRequest,
+  HttpHandler,
+  HttpEvent,
+  HttpErrorResponse
+} from '@angular/common/http';
+import { Observable, throwError, BehaviorSubject } from 'rxjs';
+import { catchError, filter, take, switchMap } from 'rxjs/operators';
+import { AuthService } from '../services/auth.service';
+
+@Injectable()
+export class AuthInterceptor implements HttpInterceptor {
+  private isRefreshing = false;
+  private refreshTokenSubject = new BehaviorSubject<string | null>(null);
+
+  constructor(private authService: AuthService) {}
+
+  intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
+    // Skip adding token for auth endpoints
+    if (request.url.includes('/auth/')) {
+      return next.handle(request);
+    }
+
+    const token = this.authService.getToken();
+    let req = request;
+
+    if (token) {
+      req = this.addToken(request, token);
+    }
+
+    return next.handle(req).pipe(
+      catchError((error: HttpErrorResponse) => {
+        if (error.status === 401 && !request.url.includes('/auth/refresh')) {
+          return this.handle401Error(req, next);
+        }
+        return throwError(() => error);
+      })
+    );
+  }
+
+  private addToken(request: HttpRequest<any>, token: string): HttpRequest<any> {
+    return request.clone({
+      setHeaders: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  }
+
+  private handle401Error(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
+    if (!this.isRefreshing) {
+      this.isRefreshing = true;
+      this.refreshTokenSubject.next(null);
+
+      return this.authService.refreshToken().pipe(
+        switchMap((response) => {
+          this.isRefreshing = false;
+          this.refreshTokenSubject.next(response.token);
+          return next.handle(this.addToken(request, response.token));
+        }),
+        catchError((error) => {
+          this.isRefreshing = false;
+          this.authService.logout();
+          return throwError(() => error);
+        })
+      );
+    } else {
+      return this.refreshTokenSubject.pipe(
+        filter(token => token !== null),
+        take(1),
+        switchMap(token => {
+          return next.handle(this.addToken(request, token!));
+        })
+      );
+    }
+  }
+}
+
+// src/app/core/interceptors/error.interceptor.ts
+import { Injectable } from '@angular/core';
+import {
+  HttpInterceptor,
+  HttpRequest,
+  HttpHandler,
+  HttpEvent,
+  HttpErrorResponse
+} from '@angular/common/http';
+import { Observable, throwError } from 'rxjs';
+import { catchError } from 'rxjs/operators';
+import { NotificationService } from '../services/notification.service';
+
+@Injectable()
+export class ErrorInterceptor implements HttpInterceptor {
+  constructor(private notificationService: NotificationService) {}
+
+  intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
+    return next.handle(request).pipe(
+      catchError((error: HttpErrorResponse) => {
+        let errorMessage = 'An unexpected error occurred';
+
+        if (error.error instanceof ErrorEvent) {
+          // Client-side error
+          errorMessage = error.error.message;
+        } else {
+          // Server-side error
+          errorMessage = error.error?.message || error.message;
+          
+          if (error.status === 0) {
+            errorMessage = 'Unable to connect to the server';
+          } else if (error.status === 404) {
+            errorMessage = 'Resource not found';
+          } else if (error.status === 500) {
+            errorMessage = 'Internal server error';
+          }
+        }
+
+        this.notificationService.error(errorMessage);
+        return throwError(() => new Error(errorMessage));
+      })
+    );
+  }
+}
 ```
