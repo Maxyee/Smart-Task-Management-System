@@ -75,6 +75,30 @@ export interface TaskFilter {
   sortDescending: boolean;
 }
 
+export interface TaskStatistics {
+  totalTasks: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  toDoTasks: number;
+  cancelledTasks: number;
+  overdueTasks: number;
+  tasksDueThisWeek: number;
+  tasksDueNextWeek: number;
+  completionRate: number;
+  averageCompletionTime: number;
+  tasksByStatus: Record<string, number>;
+  tasksByPriority: Record<string, number>;
+  tasksByAssignee: Record<string, number>;
+  taskTrends: TaskTrend[];
+}
+
+export interface TaskTrend {
+  period: Date;
+  created: number;
+  completed: number;
+  inProgress: number;
+}
+
 export interface PagedResponse<T> {
   items: T[];
   pageNumber: number;

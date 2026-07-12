@@ -1,0 +1,442 @@
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p class="text-sm text-gray-500 mt-1">Overview of your projects and tasks</p>
+        </div>
+        <div class="flex gap-2">
+            <select [(ngModel)]="daysToShow" (change)="refreshData()"
+                class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="7">Last 7 days</option>
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+            </select>
+            <button (click)="refreshData()"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div *ngIf="loading" class="flex justify-center items-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+    </div>
+
+    <!-- Dashboard Content -->
+    <div *ngIf="!loading && dashboardSummary">
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white rounded-lg border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500">Total Projects</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ dashboardSummary.projectStatistics.totalProjects
+                            }}</p>
+                    </div>
+                    <div class="p-3 bg-indigo-100 rounded-full">
+                        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-sm">
+                    <span class="text-green-600">{{ dashboardSummary.projectStatistics.activeProjects }} active</span>
+                    <span class="mx-2 text-gray-300">|</span>
+                    <span class="text-gray-500">{{ dashboardSummary.projectStatistics.projectCompletionRate }}%
+                        completed</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500">Total Tasks</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ dashboardSummary.taskStatistics.totalTasks }}</p>
+                    </div>
+                    <div class="p-3 bg-green-100 rounded-full">
+                        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-sm">
+                    <span class="text-green-600">{{ dashboardSummary.taskStatistics.completedTasks }} completed</span>
+                    <span class="mx-2 text-gray-300">|</span>
+                    <span class="text-gray-500">{{ dashboardSummary.taskStatistics.completionRate }}% rate</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500">In Progress</p>
+                        <p class="text-2xl font-bold text-yellow-600">{{ dashboardSummary.taskStatistics.inProgressTasks
+                            }}</p>
+                    </div>
+                    <div class="p-3 bg-yellow-100 rounded-full">
+                        <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-sm">
+                    <span class="text-red-600">{{ dashboardSummary.taskStatistics.overdueTasks }} overdue</span>
+                    <span class="mx-2 text-gray-300">|</span>
+                    <span class="text-gray-500">{{ dashboardSummary.taskStatistics.tasksDueThisWeek }} due this
+                        week</span>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg border border-gray-200 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-500">Team Members</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ dashboardSummary.userStatistics.totalUsers }}</p>
+                    </div>
+                    <div class="p-3 bg-purple-100 rounded-full">
+                        <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-sm">
+                    <span class="text-green-600">{{ dashboardSummary.userStatistics.activeUsers }} active</span>
+                    <span class="mx-2 text-gray-300">|</span>
+                    <span class="text-gray-500">{{ dashboardSummary.userStatistics.usersByRole['Admin'] || 0 }}
+                        admins</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="border-b border-gray-200">
+            <nav class="-mb-px flex space-x-8">
+                <button (click)="changeTab('overview')" class="py-2 px-1 border-b-2 text-sm font-medium" [class]="activeTab === 'overview'
+            ? 'border-indigo-500 text-indigo-600'
+            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'">
+                    Overview
+                </button>
+                <button (click)="changeTab('tasks')" class="py-2 px-1 border-b-2 text-sm font-medium" [class]="activeTab === 'tasks'
+            ? 'border-indigo-500 text-indigo-600'
+            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'">
+                    Task Analytics
+                </button>
+                <button *ngIf="isAdminOrManager" (click)="changeTab('team')"
+                    class="py-2 px-1 border-b-2 text-sm font-medium" [class]="activeTab === 'team'
+            ? 'border-indigo-500 text-indigo-600'
+            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'">
+                    Team Performance
+                </button>
+                <button (click)="changeTab('metrics')" class="py-2 px-1 border-b-2 text-sm font-medium" [class]="activeTab === 'metrics'
+            ? 'border-indigo-500 text-indigo-600'
+            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'">
+                    Metrics
+                </button>
+            </nav>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="mt-6">
+            <!-- Overview Tab -->
+            <div *ngIf="activeTab === 'overview'" class="space-y-6">
+                <!-- Project Progress -->
+                <div class="bg-white rounded-lg border border-gray-200 p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Project Progress</h3>
+                    <div class="space-y-4">
+                        <div *ngFor="let project of projectProgress" class="flex items-center">
+                            <div class="w-1/4">
+                                <a [routerLink]="['/projects', project.projectId]"
+                                    class="text-sm font-medium text-gray-900 hover:text-indigo-600">
+                                    {{ project.projectName }}
+                                </a>
+                                <p class="text-xs text-gray-500">{{ project.totalTasks }} tasks</p>
+                            </div>
+                            <div class="w-3/4">
+                                <div class="flex items-center">
+                                    <div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-500"
+                                            [class]="getProgressColor(project.progress)"
+                                            [style.width]="project.progress + '%'"></div>
+                                    </div>
+                                    <span class="ml-3 text-sm font-medium text-gray-900 min-w-[50px]">{{
+                                        project.progress }}%</span>
+                                </div>
+                                <div *ngIf="project.isOverdue" class="text-xs text-red-600 mt-1">
+                                    ⚠️ Overdue
+                                </div>
+                            </div>
+                        </div>
+                        <div *ngIf="projectProgress.length === 0" class="text-center py-4 text-gray-500">
+                            No projects available
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="bg-white rounded-lg border border-gray-200 p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Recent Activity</h3>
+                    <div class="flow-root">
+                        <ul class="-mb-8">
+                            <li *ngFor="let activity of recentActivities; let last = last">
+                                <div class="relative pb-8" [class.last:pb-0]="last">
+                                    <div *ngIf="!last" class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200"
+                                        aria-hidden="true"></div>
+                                    <div class="relative flex space-x-3">
+                                        <div>
+                                            <span
+                                                class="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center ring-8 ring-white">
+                                                <span class="text-indigo-600 text-xs font-medium">
+                                                    {{ activity.user.charAt(0).toUpperCase() }}
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div>
+                                                <p class="text-sm text-gray-900">
+                                                    <span class="font-medium">{{ activity.user }}</span>
+                                                    {{ activity.action }}
+                                                    <span class="font-medium">{{ activity.entityName }}</span>
+                                                </p>
+                                                <p class="text-xs text-gray-500">
+                                                    {{ activity.timestamp | date:'MMM d, y h:mm a' }}
+                                                    <span *ngIf="activity.details" class="ml-2 text-gray-400">• {{
+                                                        activity.details }}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <span class="text-xs text-gray-400">{{ activity.entity }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li *ngIf="recentActivities.length === 0" class="text-center py-4 text-gray-500">
+                                No recent activity
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Task Analytics Tab -->
+            <div *ngIf="activeTab === 'tasks'" class="space-y-6">
+                <div *ngIf="loadingTasks" class="flex justify-center items-center py-12">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                </div>
+
+                <div *ngIf="!loadingTasks && taskStatistics" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Tasks by Status -->
+                    <div class="bg-white rounded-lg border border-gray-200 p-6">
+                        <h4 class="text-sm font-medium text-gray-700 mb-4">Tasks by Status</h4>
+                        <div class="space-y-3">
+                            <div *ngFor="let status of getKeys(taskStatistics.tasksByStatus)" class="flex items-center">
+                                <span class="w-24 text-sm text-gray-600">{{ getStatusLabel(+status) }}</span>
+                                <div class="flex-1">
+                                    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full"
+                                            [style.width]="(taskStatistics.tasksByStatus[status] / taskStatistics.totalTasks * 100) + '%'"
+                                            [style.background-color]="getStatusColor(+status)"></div>
+                                    </div>
+                                </div>
+                                <span class="ml-3 text-sm font-medium text-gray-900">{{
+                                    taskStatistics.tasksByStatus[status] }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tasks by Priority -->
+                    <div class="bg-white rounded-lg border border-gray-200 p-6">
+                        <h4 class="text-sm font-medium text-gray-700 mb-4">Tasks by Priority</h4>
+                        <div class="space-y-3">
+                            <div *ngFor="let priority of getKeys(taskStatistics.tasksByPriority)"
+                                class="flex items-center">
+                                <span class="w-24 text-sm text-gray-600">{{ getPriorityLabel(+priority) }}</span>
+                                <div class="flex-1">
+                                    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full"
+                                            [style.width]="(taskStatistics.tasksByPriority[priority] / taskStatistics.totalTasks * 100) + '%'"
+                                            [style.background-color]="getPriorityColor(+priority)"></div>
+                                    </div>
+                                </div>
+                                <span class="ml-3 text-sm font-medium text-gray-900">{{
+                                    taskStatistics.tasksByPriority[priority] }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Task Stats -->
+                    <div class="bg-white rounded-lg border border-gray-200 p-6 lg:col-span-2">
+                        <h4 class="text-sm font-medium text-gray-700 mb-4">Task Statistics</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <p class="text-xs text-gray-500">Total</p>
+                                <p class="text-xl font-bold text-gray-900">{{ taskStatistics.totalTasks }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500">Completion Rate</p>
+                                <p class="text-xl font-bold text-green-600">{{ taskStatistics.completionRate }}%</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500">Overdue</p>
+                                <p class="text-xl font-bold text-red-600">{{ taskStatistics.overdueTasks }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500">Avg. Completion Time</p>
+                                <p class="text-xl font-bold text-gray-900">{{ taskStatistics.averageCompletionTime }}
+                                    days</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Team Performance Tab -->
+            <div *ngIf="activeTab === 'team' && isAdminOrManager" class="space-y-6">
+                <div class="bg-white rounded-lg border border-gray-200 p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Top Performers</h3>
+                    <div *ngIf="topPerformers.length > 0" class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead>
+                                <tr>
+                                    <th
+                                        class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Team Member</th>
+                                    <th
+                                        class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Assigned</th>
+                                    <th
+                                        class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Completed</th>
+                                    <th
+                                        class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Overdue</th>
+                                    <th
+                                        class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Completion Rate</th>
+                                    <th
+                                        class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Productivity Score</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                <tr *ngFor="let performer of topPerformers">
+                                    <td class="px-4 py-3">
+                                        <div class="flex items-center">
+                                            <div
+                                                class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                                                <span class="text-indigo-600 font-medium text-xs">{{
+                                                    performer.fullName.charAt(0) }}</span>
+                                            </div>
+                                            <div class="ml-3">
+                                                <p class="text-sm font-medium text-gray-900">{{ performer.fullName }}
+                                                </p>
+                                                <p class="text-xs text-gray-500">@{{ performer.userName }}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-center text-sm text-gray-900">{{ performer.assignedTasks
+                                        }}</td>
+                                    <td class="px-4 py-3 text-center text-sm text-green-600">{{ performer.completedTasks
+                                        }}</td>
+                                    <td class="px-4 py-3 text-center text-sm text-red-600">{{ performer.overdueTasks }}
+                                    </td>
+                                    <td class="px-4 py-3 text-center text-sm">
+                                        <span class="inline-block px-2 py-1 text-xs font-semibold rounded-full"
+                                            [class]="performer.completionRate >= 70 ? 'bg-green-100 text-green-800' : performer.completionRate >= 40 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'">
+                                            {{ performer.completionRate }}%
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center text-sm font-bold text-indigo-600">{{
+                                        performer.productivityScore }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div *ngIf="topPerformers.length === 0" class="text-center py-4 text-gray-500">
+                        No performance data available
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metrics Tab -->
+            <div *ngIf="activeTab === 'metrics'" class="space-y-6">
+                <div *ngIf="performanceMetrics" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Key Metrics -->
+                    <div class="bg-white rounded-lg border border-gray-200 p-6 md:col-span-2">
+                        <h4 class="text-sm font-medium text-gray-700 mb-4">Key Metrics</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500">Productivity</p>
+                                <p class="text-2xl font-bold text-indigo-600">{{ performanceMetrics.overallProductivity
+                                    }}%</p>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500">Project Success Rate</p>
+                                <p class="text-2xl font-bold text-green-600">{{ performanceMetrics.projectSuccessRate
+                                    }}%</p>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500">Task Efficiency</p>
+                                <p class="text-2xl font-bold text-blue-600">{{ performanceMetrics.taskEfficiency }}%</p>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500">On-Time Delivery</p>
+                                <p class="text-2xl font-bold text-green-600">{{ performanceMetrics.onTimeDeliveryRate
+                                    }}%</p>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                <p class="text-xs text-gray-500">Resource Utilization</p>
+                                <p class="text-2xl font-bold text-purple-600">{{ performanceMetrics.resourceUtilization
+                                    }}%</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metrics by Project -->
+                    <div class="bg-white rounded-lg border border-gray-200 p-6">
+                        <h4 class="text-sm font-medium text-gray-700 mb-4">Metrics by Project</h4>
+                        <div class="space-y-3">
+                            <div *ngFor="let item of performanceMetrics.metricsByProject | keyvalue"
+                                class="flex items-center">
+                                <span class="w-1/3 text-sm text-gray-600 truncate">{{ item.key }}</span>
+                                <div class="flex-1">
+                                    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full bg-indigo-500" [style.width]="item.value + '%'">
+                                        </div>
+                                    </div>
+                                </div>
+                                <span class="ml-3 text-sm font-medium text-gray-900">{{ item.value }}%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metric Trend -->
+                    <div class="bg-white rounded-lg border border-gray-200 p-6">
+                        <h4 class="text-sm font-medium text-gray-700 mb-4">Productivity Trend</h4>
+                        <div class="space-y-3">
+                            <div *ngFor="let trend of performanceMetrics.metricsTrend.slice(-10)"
+                                class="flex items-center">
+                                <span class="w-16 text-xs text-gray-500">{{ trend.key }}</span>
+                                <div class="flex-1">
+                                    <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full"
+                                            [class]="trend.value >= 70 ? 'bg-green-500' : trend.value >= 40 ? 'bg-yellow-500' : 'bg-red-500'"
+                                            [style.width]="trend.value + '%'"></div>
+                                    </div>
+                                </div>
+                                <span class="ml-3 text-sm font-medium text-gray-900">{{ trend.value }}%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
