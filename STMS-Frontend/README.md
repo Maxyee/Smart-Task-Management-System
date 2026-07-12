@@ -398,3 +398,250 @@ export interface PagedResponse<T> {
   hasNextPage: boolean;
 }
 ```
+# Part 3 : Core Services
+
+```ts
+// src/app/core/services/api.service.ts
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpParams, HttpErrorResponse } from '@angular/common/http';
+import { Observable, throwError } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
+import { ApiResponse } from '../models/ai.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class ApiService {
+  private readonly API_URL = 'https://localhost:5001/api';
+
+  constructor(private http: HttpClient) {}
+
+  get<T>(endpoint: string, params?: any): Observable<T> {
+    const httpParams = this.buildParams(params);
+    return this.http.get<ApiResponse<T>>(`${this.API_URL}/${endpoint}`, { params: httpParams })
+      .pipe(
+        map(response => response.data),
+        catchError(this.handleError)
+      );
+  }
+
+  post<T>(endpoint: string, data?: any): Observable<T> {
+    return this.http.post<ApiResponse<T>>(`${this.API_URL}/${endpoint}`, data)
+      .pipe(
+        map(response => response.data),
+        catchError(this.handleError)
+      );
+  }
+
+  put<T>(endpoint: string, data: any): Observable<T> {
+    return this.http.put<ApiResponse<T>>(`${this.API_URL}/${endpoint}`, data)
+      .pipe(
+        map(response => response.data),
+        catchError(this.handleError)
+      );
+  }
+
+  patch<T>(endpoint: string, data: any): Observable<T> {
+    return this.http.patch<ApiResponse<T>>(`${this.API_URL}/${endpoint}`, data)
+      .pipe(
+        map(response => response.data),
+        catchError(this.handleError)
+      );
+  }
+
+  delete<T>(endpoint: string): Observable<T> {
+    return this.http.delete<ApiResponse<T>>(`${this.API_URL}/${endpoint}`)
+      .pipe(
+        map(response => response.data),
+        catchError(this.handleError)
+      );
+  }
+
+  private buildParams(params: any): HttpParams {
+    let httpParams = new HttpParams();
+    if (params) {
+      Object.keys(params).forEach(key => {
+        if (params[key] !== null && params[key] !== undefined) {
+          httpParams = httpParams.append(key, params[key].toString());
+        }
+      });
+    }
+    return httpParams;
+  }
+
+  private handleError(error: HttpErrorResponse): Observable<never> {
+    let errorMessage = 'An error occurred';
+    if (error.error instanceof ErrorEvent) {
+      // Client-side error
+      errorMessage = error.error.message;
+    } else {
+      // Server-side error
+      errorMessage = error.error?.message || error.message || `Error ${error.status}`;
+    }
+    return throwError(() => new Error(errorMessage));
+  }
+}
+
+
+// src/app/core/services/auth.service.ts
+import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { Router } from '@angular/router';
+import { ApiService } from './api.service';
+import { User } from '../models/user.model';
+import { LoginRequest, RegisterRequest, AuthResponse, RefreshTokenRequest } from '../models/auth.model'
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AuthService {
+  private readonly TOKEN_KEY = 'access_token';
+  private readonly REFRESH_TOKEN_KEY = 'refresh_token';
+  private readonly USER_KEY = 'user_data';
+
+  private currentUserSubject = new BehaviorSubject<User | null>(null);
+  public currentUser$ = this.currentUserSubject.asObservable();
+
+  private isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
+  public isAuthenticated$ = this.isAuthenticatedSubject.asObservable();
+
+  constructor(
+    private apiService: ApiService,
+    private router: Router
+  ) {
+    this.loadStoredUser();
+  }
+
+  login(loginRequest: LoginRequest): Observable<AuthResponse> {
+    return this.apiService.post<AuthResponse>('auth/login', loginRequest)
+      .pipe(
+        tap(response => {
+          this.setSession(response);
+        })
+      );
+  }
+
+  register(registerRequest: RegisterRequest): Observable<AuthResponse> {
+    return this.apiService.post<AuthResponse>('auth/register', registerRequest)
+      .pipe(
+        tap(response => {
+          this.setSession(response);
+        })
+      );
+  }
+
+  refreshToken(): Observable<AuthResponse> {
+    const token = this.getToken();
+    const refreshToken = this.getRefreshToken();
+    
+    if (!token || !refreshToken) {
+      throw new Error('No tokens available');
+    }
+
+    const request: RefreshTokenRequest = { token, refreshToken };
+    return this.apiService.post<AuthResponse>('auth/refresh', request)
+      .pipe(
+        tap(response => {
+          this.setSession(response);
+        })
+      );
+  }
+
+  logout(): Observable<void> {
+    const refreshToken = this.getRefreshToken();
+    if (refreshToken) {
+      this.apiService.post<void>('auth/logout', refreshToken).subscribe({
+        error: () => this.clearSession()
+      });
+    }
+    this.clearSession();
+    this.router.navigate(['/login']);
+    return new Observable<void>(observer => {
+      observer.next();
+      observer.complete();
+    });
+  }
+
+  changePassword(currentPassword: string, newPassword: string): Observable<void> {
+    return this.apiService.post<void>('auth/change-password', {
+      currentPassword,
+      newPassword,
+      confirmNewPassword: newPassword
+    });
+  }
+
+  getToken(): string | null {
+    return localStorage.getItem(this.TOKEN_KEY);
+  }
+
+  getRefreshToken(): string | null {
+    return localStorage.getItem(this.REFRESH_TOKEN_KEY);
+  }
+
+  getCurrentUser(): User | null {
+    return this.currentUserSubject.value;
+  }
+
+  getUserRole(): string | null {
+    return this.currentUserSubject.value?.role || null;
+  }
+
+  hasRole(role: string): boolean {
+    return this.currentUserSubject.value?.role === role;
+  }
+
+  isAdmin(): boolean {
+    return this.hasRole('Admin');
+  }
+
+  isProjectManager(): boolean {
+    return this.hasRole('ProjectManager') || this.isAdmin();
+  }
+
+  private setSession(authResponse: AuthResponse): void {
+    localStorage.setItem(this.TOKEN_KEY, authResponse.token);
+    localStorage.setItem(this.REFRESH_TOKEN_KEY, authResponse.refreshToken);
+    
+    const user: User = {
+      id: '', // This should be provided by the backend
+      email: authResponse.email,
+      username: authResponse.username,
+      firstName: authResponse.firstName,
+      lastName: authResponse.lastName,
+      role: authResponse.role as any,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    localStorage.setItem(this.USER_KEY, JSON.stringify(user));
+    this.currentUserSubject.next(user);
+    this.isAuthenticatedSubject.next(true);
+  }
+
+  private clearSession(): void {
+    localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem(this.REFRESH_TOKEN_KEY);
+    localStorage.removeItem(this.USER_KEY);
+    this.currentUserSubject.next(null);
+    this.isAuthenticatedSubject.next(false);
+  }
+
+  private loadStoredUser(): void {
+    const userData = localStorage.getItem(this.USER_KEY);
+    const token = this.getToken();
+    
+    if (userData && token) {
+      try {
+        const user = JSON.parse(userData);
+        this.currentUserSubject.next(user);
+        this.isAuthenticatedSubject.next(true);
+      } catch (e) {
+        this.clearSession();
+      }
+    } else {
+      this.isAuthenticatedSubject.next(false);
+    }
+  }
+}
+```
