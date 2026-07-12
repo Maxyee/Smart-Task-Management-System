@@ -32,8 +32,11 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
         makeProfessional: true,
         expandDescription: true,
         makeActionable: true,
-        tone: 'Professional'
+        maxLength: 100,
+        tone: 'Professional',
+        language: 'English'
     };
+
 
     // Status update
     newStatus: TaskStatus | null = null;

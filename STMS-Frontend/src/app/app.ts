@@ -13,7 +13,7 @@ import { NotificationComponent } from './shared/components/notification/notifica
     RouterOutlet,
     HeaderComponent,
     FooterComponent,
-    NotificationComponent
+    NotificationComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css'

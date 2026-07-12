@@ -20,10 +20,10 @@
                     Overdue
                 </span>
             </div>
-            <p class="text-sm text-gray-500 mt-1">
+            <!-- <p class="text-sm text-gray-500 mt-1">
                 Created by {{ task.createdByUser?.username }} on {{ task.createdAt | date:'MMM d, y' }}
                 <span *ngIf="task.assignedToUser"> • Assigned to {{ task.assignedToUser.username }}</span>
-            </p>
+            </p> -->
         </div>
         <div class="flex gap-2 flex-wrap">
             <a [routerLink]="['/tasks', task.id, 'edit']" *ngIf="canEdit"

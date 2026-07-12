@@ -4897,3 +4897,10 @@ export class DashboardService {
     }
 }
 ```
+
+# Part 14 : Solved Bugs to Run Frontend
+
+```bash
+
+# click the commit to check what was changed
+```
