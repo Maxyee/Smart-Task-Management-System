@@ -1162,3 +1162,72 @@ export const routes: Routes = [
 ];
 
 ```
+# Part 9 : Main App and Shared Component
+
+```ts
+// src/app/app.ts
+import { Component, signal } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { HeaderComponent } from './shared/components/header/header.component';
+import { FooterComponent } from './shared/components/footer/footer.component';
+import { NotificationComponent } from './shared/components/notification/notification.component';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [
+    CommonModule,
+    RouterOutlet,
+    HeaderComponent,
+    FooterComponent,
+    NotificationComponent
+  ],
+  templateUrl: './app.html',
+  styleUrl: './app.css'
+})
+export class App {
+  protected readonly title = signal('STMS-Frontend');
+}
+
+
+// src/app/shared/components/header/header.component.ts
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
+import { AuthService } from '../../../core/services/auth.service';
+import { User } from '../../../core/models/user.model';
+
+@Component({
+  selector: 'app-header',
+  standalone: true,
+  imports: [CommonModule, RouterModule],
+  templateUrl: './header.component.html',
+  styleUrls: ['./header.component.css']
+})
+export class HeaderComponent implements OnInit {
+  user: User | null = null;
+  isMenuOpen = false;
+
+  constructor(private authService: AuthService) {}
+
+  ngOnInit(): void {
+    this.authService.currentUser$.subscribe(user => {
+      this.user = user;
+    });
+  }
+
+  logout(): void {
+    this.authService.logout();
+  }
+
+  toggleMenu(): void {
+    this.isMenuOpen = !this.isMenuOpen;
+  }
+
+  getInitials(): string {
+    if (!this.user) return '';
+    return `${this.user.firstName[0]}${this.user.lastName[0]}`;
+  }
+}
+```

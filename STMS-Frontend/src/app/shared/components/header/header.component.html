@@ -1,0 +1,71 @@
+<!-- src/app/shared/components/header/header.component.html -->
+<header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="container mx-auto px-4">
+        <div class="flex justify-between items-center h-16">
+            <!-- Logo -->
+            <div class="flex items-center space-x-4">
+                <a routerLink="/dashboard" class="flex items-center space-x-2">
+                    <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span class="text-xl font-bold text-gray-900">STMS</span>
+                </a>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="hidden md:flex items-center space-x-6">
+                <a routerLink="/dashboard" routerLinkActive="text-indigo-600"
+                    class="text-gray-600 hover:text-gray-900">Dashboard</a>
+                <a routerLink="/projects" routerLinkActive="text-indigo-600"
+                    class="text-gray-600 hover:text-gray-900">Projects</a>
+                <a routerLink="/tasks" routerLinkActive="text-indigo-600"
+                    class="text-gray-600 hover:text-gray-900">Tasks</a>
+            </nav>
+
+            <!-- User Menu -->
+            <div class="flex items-center space-x-4">
+                <div *ngIf="user" class="relative">
+                    <button (click)="toggleMenu()" class="flex items-center space-x-2 focus:outline-none">
+                        <div
+                            class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-medium">
+                            {{ getInitials() }}
+                        </div>
+                        <span class="hidden md:block text-sm text-gray-700">{{ user.username }}</span>
+                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+
+                    <div *ngIf="isMenuOpen" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1">
+                        <div class="px-4 py-2 border-b border-gray-200">
+                            <p class="text-sm font-medium text-gray-900">{{ user.firstName }} {{ user.lastName }}</p>
+                            <p class="text-xs text-gray-500">{{ user.email }}</p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                <span
+                                    class="inline-block px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-xs">
+                                    {{ user.role }}
+                                </span>
+                            </p>
+                        </div>
+                        <a routerLink="/profile"
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Profile</a>
+                        <a routerLink="/settings"
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+                        <button (click)="logout()"
+                            class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">
+                            Sign out
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mobile Menu Button -->
+            <button (click)="toggleMenu()" class="md:hidden focus:outline-none">
+                <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </button>
+        </div>
+    </div>
+</header>
