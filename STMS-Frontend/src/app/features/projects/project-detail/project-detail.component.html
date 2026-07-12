@@ -1,0 +1,133 @@
+<div *ngIf="loading" class="flex justify-center items-center py-12">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+</div>
+
+<div *ngIf="!loading && project" class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <div class="flex items-center gap-3">
+                <h1 class="text-2xl font-bold text-gray-900">{{ project.name }}</h1>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                    [class]="getStatusBadgeClass(project.isActive)">
+                    {{ getStatusText(project.isActive) }}
+                </span>
+            </div>
+            <p class="text-sm text-gray-500 mt-1">
+                Created by {{ project.createdByUser?.username }} on {{ project.createdAt | date:'MMM d, y' }}
+            </p>
+        </div>
+        <div class="flex gap-2">
+            <a routerLink="/tasks" [queryParams]="{ projectId: project.id }"
+                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                View Tasks
+            </a>
+            <a *ngIf="isAdminOrManager" [routerLink]="['/projects', project.id, 'edit']"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                Edit Project
+            </a>
+            <button *ngIf="isAdminOrManager" (click)="toggleStatus()"
+                class="px-4 py-2 border border-yellow-300 text-yellow-700 rounded-md text-sm font-medium hover:bg-yellow-50">
+                {{ project.isActive ? 'Deactivate' : 'Activate' }}
+            </button>
+            <button *ngIf="isAdminOrManager" (click)="deleteProject()"
+                class="px-4 py-2 border border-red-300 text-red-700 rounded-md text-sm font-medium hover:bg-red-50">
+                Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Description -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Description</h3>
+        <p class="text-gray-600">{{ project.description || 'No description provided.' }}</p>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <p class="text-sm text-gray-500">Total Tasks</p>
+            <p class="text-2xl font-bold text-gray-900">{{ summary?.totalTasks || 0 }}</p>
+        </div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <p class="text-sm text-gray-500">Completed</p>
+            <p class="text-2xl font-bold text-green-600">{{ summary?.completedTasks || 0 }}</p>
+        </div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <p class="text-sm text-gray-500">In Progress</p>
+            <p class="text-2xl font-bold text-yellow-600">{{ summary?.inProgressTasks || 0 }}</p>
+        </div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <p class="text-sm text-gray-500">Completion</p>
+            <p class="text-2xl font-bold text-indigo-600">{{ summary?.completionPercentage || 0 }}%</p>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="text-sm font-medium text-gray-700">Overall Progress</h3>
+            <span class="text-sm font-medium text-gray-900">{{ summary?.completionPercentage || 0 }}%</span>
+        </div>
+        <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-500"
+                [class]="getProgressColor(summary?.completionPercentage || 0)"
+                [style.width]="(summary?.completionPercentage || 0) + '%'"></div>
+        </div>
+        <div class="flex justify-between text-xs text-gray-500 mt-2">
+            <span>0%</span>
+            <span>100%</span>
+        </div>
+    </div>
+
+    <!-- Task Breakdown -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-4">Task Breakdown</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="text-center">
+                <div class="text-2xl font-bold text-gray-900">{{ summary?.toDoTasks || 0 }}</div>
+                <div class="text-xs text-gray-500">To Do</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-yellow-600">{{ summary?.inProgressTasks || 0 }}</div>
+                <div class="text-xs text-gray-500">In Progress</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-green-600">{{ summary?.completedTasks || 0 }}</div>
+                <div class="text-xs text-gray-500">Completed</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-red-600">{{ summary?.cancelledTasks || 0 }}</div>
+                <div class="text-xs text-gray-500">Cancelled</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Date Information -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Timeline</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <p class="text-sm text-gray-500">Start Date</p>
+                <p class="text-sm font-medium text-gray-900">{{ project.startDate | date:'MMM d, y' }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500">End Date</p>
+                <p class="text-sm font-medium text-gray-900">{{ project.endDate ? (project.endDate | date:'MMM d, y') :
+                    'Not set' }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex flex-wrap gap-2">
+        <a routerLink="/tasks/create" [queryParams]="{ projectId: project.id }"
+            class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+            + Create Task
+        </a>
+        <a routerLink="/projects"
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50">
+            Back to Projects
+        </a>
+    </div>
+</div>

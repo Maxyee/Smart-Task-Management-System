@@ -1,0 +1,99 @@
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-900">
+                {{ isEditMode ? 'Edit Project' : 'Create New Project' }}
+            </h2>
+            <p class="text-sm text-gray-500 mt-1">
+                {{ isEditMode ? 'Update project details' : 'Add a new project to the system' }}
+            </p>
+        </div>
+
+        <form [formGroup]="projectForm" (ngSubmit)="onSubmit()" class="p-6 space-y-6">
+            <!-- Project Name -->
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700">
+                    Project Name <span class="text-red-500">*</span>
+                </label>
+                <input id="name" type="text" formControlName="name"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Enter project name"
+                    [class.border-red-500]="projectForm.get('name')?.invalid && projectForm.get('name')?.touched" />
+                <div *ngIf="projectForm.get('name')?.invalid && projectForm.get('name')?.touched"
+                    class="text-red-500 text-xs mt-1">
+                    <span *ngIf="projectForm.get('name')?.errors?.['required']">Project name is required</span>
+                    <span *ngIf="projectForm.get('name')?.errors?.['maxlength']">Maximum 100 characters</span>
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700">
+                    Description
+                </label>
+                <textarea id="description" rows="3" formControlName="description"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Describe the project"
+                    [class.border-red-500]="projectForm.get('description')?.invalid && projectForm.get('description')?.touched"></textarea>
+                <div *ngIf="projectForm.get('description')?.invalid && projectForm.get('description')?.touched"
+                    class="text-red-500 text-xs mt-1">
+                    <span *ngIf="projectForm.get('description')?.errors?.['maxlength']">Maximum 500 characters</span>
+                </div>
+            </div>
+
+            <!-- Start and End Dates -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="startDate" class="block text-sm font-medium text-gray-700">
+                        Start Date <span class="text-red-500">*</span>
+                    </label>
+                    <input id="startDate" type="date" formControlName="startDate"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        [class.border-red-500]="projectForm.get('startDate')?.invalid && projectForm.get('startDate')?.touched" />
+                    <div *ngIf="projectForm.get('startDate')?.invalid && projectForm.get('startDate')?.touched"
+                        class="text-red-500 text-xs mt-1">
+                        <span *ngIf="projectForm.get('startDate')?.errors?.['required']">Start date is required</span>
+                    </div>
+                </div>
+                <div>
+                    <label for="endDate" class="block text-sm font-medium text-gray-700">
+                        End Date
+                    </label>
+                    <input id="endDate" type="date" formControlName="endDate"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
+                </div>
+            </div>
+
+            <!-- Status (only in edit mode) -->
+            <div *ngIf="isEditMode" class="flex items-center">
+                <input id="isActive" type="checkbox" formControlName="isActive"
+                    class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                <label for="isActive" class="ml-2 block text-sm text-gray-900">
+                    Project is active
+                </label>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" (click)="onCancel()"
+                    class="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Cancel
+                </button>
+                <button type="submit" [disabled]="isLoading"
+                    class="w-full sm:w-auto px-4 py-2 bg-indigo-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50">
+                    <span class="flex items-center justify-center">
+                        <svg *ngIf="isLoading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
+                        </svg>
+                        {{ isLoading ? 'Saving...' : (isEditMode ? 'Update Project' : 'Create Project') }}
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

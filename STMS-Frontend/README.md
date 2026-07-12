@@ -1645,3 +1645,1082 @@ export class NotificationComponent implements OnInit, OnDestroy {
   </div>
 </div>
 ```
+
+
+# Part 11 : Project Management Components / Project Module
+## Project Service
+```ts
+// src/app/core/services/project.service.ts
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+import { ApiService } from './api.service';
+import {
+  Project,
+  CreateProjectRequest,
+  UpdateProjectRequest,
+  ProjectFilter,
+  PagedResponse,
+  ProjectTaskSummary
+} from '../models/project.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class ProjectService {
+  constructor(private apiService: ApiService) {}
+
+  getProjects(filter: ProjectFilter): Observable<PagedResponse<Project>> {
+    return this.apiService.get<PagedResponse<Project>>('projects', filter);
+  }
+
+  getProjectById(id: string): Observable<Project> {
+    return this.apiService.get<Project>(`projects/${id}`);
+  }
+
+  createProject(request: CreateProjectRequest): Observable<Project> {
+    return this.apiService.post<Project>('projects', request);
+  }
+
+  updateProject(id: string, request: UpdateProjectRequest): Observable<Project> {
+    return this.apiService.put<Project>(`projects/${id}`, request);
+  }
+
+  deleteProject(id: string): Observable<void> {
+    return this.apiService.delete<void>(`projects/${id}`);
+  }
+
+  toggleProjectStatus(id: string): Observable<void> {
+    return this.apiService.patch<void>(`projects/${id}/toggle-status`, {});
+  }
+
+  getProjectSummary(id: string): Observable<ProjectTaskSummary> {
+    return this.apiService.get<ProjectTaskSummary>(`projects/${id}/summary`);
+  }
+
+  getProjectsProgress(): Observable<Project[]> {
+    return this.apiService.get<Project[]>('dashboard/projects/progress');
+  }
+}
+```
+
+## Project List Component
+```ts
+// src/app/features/projects/project-list/project-list.component.ts
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
+import { FormsModule } from '@angular/forms';
+import { ProjectService } from '../../../core/services/project.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { Project, ProjectFilter, PagedResponse } from '../../../core/models/project.model';
+import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
+
+@Component({
+  selector: 'app-project-list',
+  standalone: true,
+  imports: [CommonModule, RouterModule, FormsModule],
+  templateUrl: './project-list.component.html',
+  styleUrls: ['./project-list.component.css']
+})
+export class ProjectListComponent implements OnInit, OnDestroy {
+  projects: Project[] = [];
+  loading = false;
+  totalItems = 0;
+  currentPage = 1;
+  pageSize = 10;
+  totalPages = 0;
+
+  filter: ProjectFilter = {
+    pageNumber: 1,
+    pageSize: 10,
+    sortBy: 'createdAt',
+    sortDescending: true
+  };
+
+  searchTerm = '';
+  showFilters = false;
+  isAdminOrManager = false;
+  private destroy$ = new Subject<void>();
+  private searchSubject = new Subject<string>();
+
+  constructor(
+    private projectService: ProjectService,
+    private authService: AuthService,
+    private notificationService: NotificationService
+  ) {
+    // Setup search with debounce
+    this.searchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntil(this.destroy$)
+    ).subscribe(searchTerm => {
+      this.filter.searchTerm = searchTerm || undefined;
+      this.filter.pageNumber = 1;
+      this.loadProjects();
+    });
+  }
+
+  ngOnInit(): void {
+    this.isAdminOrManager = this.authService.isAdmin() || this.authService.isProjectManager();
+    this.loadProjects();
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  loadProjects(): void {
+    this.loading = true;
+    this.projectService.getProjects(this.filter)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response: PagedResponse<Project>) => {
+          this.projects = response.items;
+          this.totalItems = response.totalCount;
+          this.currentPage = response.pageNumber;
+          this.pageSize = response.pageSize;
+          this.totalPages = response.totalPages;
+          this.loading = false;
+        },
+        error: () => {
+          this.loading = false;
+          this.notificationService.error('Failed to load projects');
+        }
+      });
+  }
+
+  onSearch(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.searchSubject.next(value);
+  }
+
+  clearSearch(): void {
+    this.searchTerm = '';
+    this.filter.searchTerm = undefined;
+    this.filter.pageNumber = 1;
+    this.loadProjects();
+  }
+
+  applyFilters(): void {
+    this.filter.pageNumber = 1;
+    this.loadProjects();
+    this.showFilters = false;
+  }
+
+  resetFilters(): void {
+    this.filter.isActive = undefined;
+    this.filter.startDateFrom = undefined;
+    this.filter.startDateTo = undefined;
+    this.filter.sortBy = 'createdAt';
+    this.filter.sortDescending = true;
+    this.filter.pageNumber = 1;
+    this.loadProjects();
+  }
+
+  changePage(page: number): void {
+    if (page < 1 || page > this.totalPages) return;
+    this.filter.pageNumber = page;
+    this.loadProjects();
+  }
+
+  changeSort(field: string): void {
+    if (this.filter.sortBy === field) {
+      this.filter.sortDescending = !this.filter.sortDescending;
+    } else {
+      this.filter.sortBy = field;
+      this.filter.sortDescending = true;
+    }
+    this.loadProjects();
+  }
+
+  getSortIcon(field: string): string {
+    if (this.filter.sortBy !== field) return '↕';
+    return this.filter.sortDescending ? '↓' : '↑';
+  }
+
+  deleteProject(id: string, name: string): void {
+    if (!confirm(`Are you sure you want to delete project "${name}"?`)) return;
+
+    this.projectService.deleteProject(id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.notificationService.success(`Project "${name}" deleted successfully`);
+          this.loadProjects();
+        },
+        error: () => {
+          this.notificationService.error('Failed to delete project');
+        }
+      });
+  }
+
+  toggleProjectStatus(id: string): void {
+    this.projectService.toggleProjectStatus(id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.notificationService.success('Project status updated');
+          this.loadProjects();
+        },
+        error: () => {
+          this.notificationService.error('Failed to update project status');
+        }
+      });
+  }
+
+  getStatusBadgeClass(isActive: boolean): string {
+    return isActive
+      ? 'bg-green-100 text-green-800'
+      : 'bg-gray-100 text-gray-800';
+  }
+
+  getStatusText(isActive: boolean): string {
+    return isActive ? 'Active' : 'Inactive';
+  }
+
+  getPageNumbers(): number[] {
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, this.currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(this.totalPages, start + maxVisible - 1);
+    
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  }
+}
+```
+
+```html
+<!-- src/app/features/projects/project-list/project-list.component.html -->
+ <div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Projects</h1>
+            <p class="text-sm text-gray-500 mt-1">Manage all your projects</p>
+        </div>
+        <div *ngIf="isAdminOrManager" class="flex gap-2">
+            <button (click)="showFilters = !showFilters"
+                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                {{ showFilters ? 'Hide Filters' : 'Show Filters' }}
+            </button>
+            <a routerLink="/projects/create"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                + New Project
+            </a>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+        </div>
+        <input type="text" [(ngModel)]="searchTerm" (input)="onSearch($event)"
+            placeholder="Search projects by name or description..."
+            class="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        <button *ngIf="searchTerm" (click)="clearSearch()" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+            <svg class="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div *ngIf="showFilters" class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select [(ngModel)]="filter.isActive"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option [ngValue]="undefined">All</option>
+                    <option [ngValue]="true">Active</option>
+                    <option [ngValue]="false">Inactive</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Start Date From</label>
+                <input type="date" [(ngModel)]="filter.startDateFrom"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Start Date To</label>
+                <input type="date" [(ngModel)]="filter.startDateTo"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+            <button (click)="resetFilters()"
+                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Reset
+            </button>
+            <button (click)="applyFilters()"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                Apply Filters
+            </button>
+        </div>
+    </div>
+
+    <!-- Projects Table -->
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div *ngIf="loading" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        </div>
+
+        <div *ngIf="!loading && projects.length === 0" class="text-center py-12">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No projects found</h3>
+            <p class="mt-1 text-sm text-gray-500">Get started by creating a new project.</p>
+            <div *ngIf="isAdminOrManager" class="mt-6">
+                <a routerLink="/projects/create"
+                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                    + New Project
+                </a>
+            </div>
+        </div>
+
+        <div *ngIf="!loading && projects.length > 0" class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th (click)="changeSort('name')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Project {{ getSortIcon('name') }}
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Description
+                        </th>
+                        <th (click)="changeSort('startDate')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Start Date {{ getSortIcon('startDate') }}
+                        </th>
+                        <th (click)="changeSort('taskCount')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Tasks {{ getSortIcon('taskCount') }}
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Progress
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                        </th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr *ngFor="let project of projects" class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <div class="flex items-center">
+                                <div
+                                    class="flex-shrink-0 h-10 w-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                                    <span class="text-indigo-600 font-medium text-sm">
+                                        {{ project.name.charAt(0).toUpperCase() }}
+                                    </span>
+                                </div>
+                                <div class="ml-4">
+                                    <a [routerLink]="['/projects', project.id]"
+                                        class="text-sm font-medium text-gray-900 hover:text-indigo-600">
+                                        {{ project.name }}
+                                    </a>
+                                    <p class="text-xs text-gray-500">Created by {{ project.createdByUser?.username }}
+                                    </p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="text-sm text-gray-500 max-w-xs truncate">
+                                {{ project.description || 'No description' }}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500">
+                            {{ project.startDate | date:'MMM d, y' }}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500">
+                            {{ project.taskCount }}
+                            <span class="text-xs text-gray-400">({{ project.completedTasks }} completed)</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center">
+                                <div class="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="h-full bg-green-500 rounded-full transition-all"
+                                        [style.width]="project.taskCount ? (project.completedTasks / project.taskCount * 100) + '%' : '0%'">
+                                    </div>
+                                </div>
+                                <span class="ml-2 text-xs text-gray-500">
+                                    {{ project.taskCount ? (project.completedTasks / project.taskCount * 100 |
+                                    number:'1.0-0') : '0' }}%
+                                </span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                [class]="getStatusBadgeClass(project.isActive)">
+                                {{ getStatusText(project.isActive) }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-right text-sm font-medium">
+                            <div class="flex justify-end gap-2">
+                                <a [routerLink]="['/projects', project.id]"
+                                    class="text-indigo-600 hover:text-indigo-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                </a>
+                                <a *ngIf="isAdminOrManager" [routerLink]="['/projects', project.id, 'edit']"
+                                    class="text-blue-600 hover:text-blue-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                </a>
+                                <button *ngIf="isAdminOrManager" (click)="toggleProjectStatus(project.id)"
+                                    class="text-yellow-600 hover:text-yellow-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </button>
+                                <button *ngIf="isAdminOrManager" (click)="deleteProject(project.id, project.name)"
+                                    class="text-red-600 hover:text-red-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div *ngIf="!loading && projects.length > 0"
+        class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+        <div class="flex flex-1 justify-between sm:hidden">
+            <button (click)="changePage(currentPage - 1)" [disabled]="currentPage === 1"
+                class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                Previous
+            </button>
+            <button (click)="changePage(currentPage + 1)" [disabled]="currentPage === totalPages"
+                class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                Next
+            </button>
+        </div>
+        <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm text-gray-700">
+                    Showing
+                    <span class="font-medium">{{ ((currentPage - 1) * pageSize) + 1 }}</span>
+                    to
+                    <span class="font-medium">{{ Math.min(currentPage * pageSize, totalItems) }}</span>
+                    of
+                    <span class="font-medium">{{ totalItems }}</span>
+                    results
+                </p>
+            </div>
+            <div>
+                <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <button (click)="changePage(currentPage - 1)" [disabled]="currentPage === 1"
+                        class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50">
+                        <span class="sr-only">Previous</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                    <button *ngFor="let page of getPageNumbers()" (click)="changePage(page)"
+                        [class]="page === currentPage
+              ? 'relative z-10 inline-flex items-center bg-indigo-600 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
+              : 'relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'">
+                        {{ page }}
+                    </button>
+                    <button (click)="changePage(currentPage + 1)" [disabled]="currentPage === totalPages"
+                        class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50">
+                        <span class="sr-only">Next</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+```
+
+## Project Form Component
+```ts
+// src/app/features/projects/project-form/project-form.component.ts
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router, RouterModule, ActivatedRoute } from '@angular/router';
+import { ProjectService } from '../../../core/services/project.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { finalize, takeUntil } from 'rxjs/operators';
+import { Subject } from 'rxjs';
+
+@Component({
+  selector: 'app-project-form',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule, RouterModule],
+  templateUrl: './project-form.component.html',
+  styleUrls: ['./project-form.component.css']
+})
+export class ProjectFormComponent implements OnInit {
+  projectForm: FormGroup;
+  isLoading = false;
+  isEditMode = false;
+  projectId: string | null = null;
+  private destroy$ = new Subject<void>();
+
+  constructor(
+    private fb: FormBuilder,
+    private projectService: ProjectService,
+    private router: Router,
+    private route: ActivatedRoute,
+    private notificationService: NotificationService
+  ) {
+    this.projectForm = this.fb.group({
+      name: ['', [Validators.required, Validators.maxLength(100)]],
+      description: ['', [Validators.maxLength(500)]],
+      startDate: ['', [Validators.required]],
+      endDate: [null],
+      isActive: [true]
+    });
+  }
+
+  ngOnInit(): void {
+    this.projectId = this.route.snapshot.paramMap.get('id');
+    this.isEditMode = !!this.projectId;
+
+    if (this.isEditMode) {
+      this.loadProject();
+    }
+  }
+
+  loadProject(): void {
+    this.isLoading = true;
+    this.projectService.getProjectById(this.projectId!)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => this.isLoading = false)
+      )
+      .subscribe({
+        next: (project) => {
+          this.projectForm.patchValue({
+            name: project.name,
+            description: project.description,
+            startDate: this.formatDate(project.startDate),
+            endDate: project.endDate ? this.formatDate(project.endDate) : null,
+            isActive: project.isActive
+          });
+        },
+        error: () => {
+          this.notificationService.error('Failed to load project');
+          this.router.navigate(['/projects']);
+        }
+      });
+  }
+
+  onSubmit(): void {
+    if (this.projectForm.invalid) {
+      this.markFormGroupTouched(this.projectForm);
+      return;
+    }
+
+    this.isLoading = true;
+    const formData = this.projectForm.value;
+
+    // Convert date strings to Date objects
+    formData.startDate = new Date(formData.startDate);
+    formData.endDate = formData.endDate ? new Date(formData.endDate) : null;
+
+    const request = this.isEditMode
+      ? this.projectService.updateProject(this.projectId!, formData)
+      : this.projectService.createProject(formData);
+
+    request.pipe(
+      takeUntil(this.destroy$),
+      finalize(() => this.isLoading = false)
+    ).subscribe({
+      next: () => {
+        const message = this.isEditMode
+          ? 'Project updated successfully'
+          : 'Project created successfully';
+        this.notificationService.success(message);
+        this.router.navigate(['/projects']);
+      },
+      error: (error) => {
+        this.notificationService.error(error.message || 'Failed to save project');
+      }
+    });
+  }
+
+  onCancel(): void {
+    this.router.navigate(['/projects']);
+  }
+
+  private markFormGroupTouched(formGroup: FormGroup): void {
+    Object.values(formGroup.controls).forEach(control => {
+      control.markAsTouched();
+      if (control instanceof FormGroup) {
+        this.markFormGroupTouched(control);
+      }
+    });
+  }
+
+  private formatDate(date: Date | string): string {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toISOString().split('T')[0];
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+}
+```
+
+```html
+<!-- src/app/features/projects/project-form/project-form.component.html -->
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-900">
+                {{ isEditMode ? 'Edit Project' : 'Create New Project' }}
+            </h2>
+            <p class="text-sm text-gray-500 mt-1">
+                {{ isEditMode ? 'Update project details' : 'Add a new project to the system' }}
+            </p>
+        </div>
+
+        <form [formGroup]="projectForm" (ngSubmit)="onSubmit()" class="p-6 space-y-6">
+            <!-- Project Name -->
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700">
+                    Project Name <span class="text-red-500">*</span>
+                </label>
+                <input id="name" type="text" formControlName="name"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Enter project name"
+                    [class.border-red-500]="projectForm.get('name')?.invalid && projectForm.get('name')?.touched" />
+                <div *ngIf="projectForm.get('name')?.invalid && projectForm.get('name')?.touched"
+                    class="text-red-500 text-xs mt-1">
+                    <span *ngIf="projectForm.get('name')?.errors?.['required']">Project name is required</span>
+                    <span *ngIf="projectForm.get('name')?.errors?.['maxlength']">Maximum 100 characters</span>
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700">
+                    Description
+                </label>
+                <textarea id="description" rows="3" formControlName="description"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Describe the project"
+                    [class.border-red-500]="projectForm.get('description')?.invalid && projectForm.get('description')?.touched"></textarea>
+                <div *ngIf="projectForm.get('description')?.invalid && projectForm.get('description')?.touched"
+                    class="text-red-500 text-xs mt-1">
+                    <span *ngIf="projectForm.get('description')?.errors?.['maxlength']">Maximum 500 characters</span>
+                </div>
+            </div>
+
+            <!-- Start and End Dates -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="startDate" class="block text-sm font-medium text-gray-700">
+                        Start Date <span class="text-red-500">*</span>
+                    </label>
+                    <input id="startDate" type="date" formControlName="startDate"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        [class.border-red-500]="projectForm.get('startDate')?.invalid && projectForm.get('startDate')?.touched" />
+                    <div *ngIf="projectForm.get('startDate')?.invalid && projectForm.get('startDate')?.touched"
+                        class="text-red-500 text-xs mt-1">
+                        <span *ngIf="projectForm.get('startDate')?.errors?.['required']">Start date is required</span>
+                    </div>
+                </div>
+                <div>
+                    <label for="endDate" class="block text-sm font-medium text-gray-700">
+                        End Date
+                    </label>
+                    <input id="endDate" type="date" formControlName="endDate"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
+                </div>
+            </div>
+
+            <!-- Status (only in edit mode) -->
+            <div *ngIf="isEditMode" class="flex items-center">
+                <input id="isActive" type="checkbox" formControlName="isActive"
+                    class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                <label for="isActive" class="ml-2 block text-sm text-gray-900">
+                    Project is active
+                </label>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" (click)="onCancel()"
+                    class="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Cancel
+                </button>
+                <button type="submit" [disabled]="isLoading"
+                    class="w-full sm:w-auto px-4 py-2 bg-indigo-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50">
+                    <span class="flex items-center justify-center">
+                        <svg *ngIf="isLoading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
+                        </svg>
+                        {{ isLoading ? 'Saving...' : (isEditMode ? 'Update Project' : 'Create Project') }}
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+```
+
+## Project Detail Component
+```ts
+// src/app/features/projects/project-detail/project-detail.component.ts
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterModule, ActivatedRoute, Router } from '@angular/router';
+import { ProjectService } from '../../../core/services/project.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { Project, ProjectTaskSummary } from '../../../core/models/project.model';
+import { Subject, takeUntil } from 'rxjs';
+
+@Component({
+    selector: 'app-project-detail',
+    standalone: true,
+    imports: [CommonModule, RouterModule],
+    templateUrl: './project-detail.component.html',
+    styleUrls: ['./project-detail.component.css']
+})
+export class ProjectDetailComponent implements OnInit, OnDestroy {
+    project: Project | null = null;
+    summary: ProjectTaskSummary | null = null;
+    loading = true;
+    isAdminOrManager = false;
+    private destroy$ = new Subject<void>();
+
+    constructor(
+        private route: ActivatedRoute,
+        private router: Router,
+        private projectService: ProjectService,
+        private authService: AuthService,
+        private notificationService: NotificationService
+    ) { }
+
+    ngOnInit(): void {
+        this.isAdminOrManager = this.authService.isAdmin() || this.authService.isProjectManager();
+        this.loadProject();
+    }
+
+    ngOnDestroy(): void {
+        this.destroy$.next();
+        this.destroy$.complete();
+    }
+
+    loadProject(): void {
+        const id = this.route.snapshot.paramMap.get('id');
+        if (!id) {
+            this.router.navigate(['/projects']);
+            return;
+        }
+
+        this.loading = true;
+        this.projectService.getProjectById(id)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (project) => {
+                    this.project = project;
+                    this.loadSummary(id);
+                },
+                error: () => {
+                    this.notificationService.error('Failed to load project');
+                    this.loading = false;
+                    this.router.navigate(['/projects']);
+                }
+            });
+    }
+
+    loadSummary(id: string): void {
+        this.projectService.getProjectSummary(id)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (summary) => {
+                    this.summary = summary;
+                    this.loading = false;
+                },
+                error: () => {
+                    this.loading = false;
+                    // Summary is optional, don't show error
+                }
+            });
+    }
+
+    deleteProject(): void {
+        if (!this.project) return;
+        if (!confirm(`Are you sure you want to delete project "${this.project.name}"?`)) return;
+
+        this.projectService.deleteProject(this.project.id)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success('Project deleted successfully');
+                    this.router.navigate(['/projects']);
+                },
+                error: () => {
+                    this.notificationService.error('Failed to delete project');
+                }
+            });
+    }
+
+    toggleStatus(): void {
+        if (!this.project) return;
+        this.projectService.toggleProjectStatus(this.project.id)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success('Project status updated');
+                    this.loadProject();
+                },
+                error: () => {
+                    this.notificationService.error('Failed to update project status');
+                }
+            });
+    }
+
+    getStatusBadgeClass(isActive: boolean): string {
+        return isActive
+            ? 'bg-green-100 text-green-800'
+            : 'bg-gray-100 text-gray-800';
+    }
+
+    getStatusText(isActive: boolean): string {
+        return isActive ? 'Active' : 'Inactive';
+    }
+
+    getProgressColor(percentage: number): string {
+        if (percentage >= 80) return 'bg-green-500';
+        if (percentage >= 50) return 'bg-yellow-500';
+        if (percentage > 0) return 'bg-orange-500';
+        return 'bg-gray-300';
+    }
+
+    getDaysUntilDue(dueDate: Date): number {
+        const now = new Date();
+        const due = new Date(dueDate);
+        const diffTime = due.getTime() - now.getTime();
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+}
+
+```
+
+```html
+<!-- src/app/features/projects/project-detail/project-detail.component.html -->
+<div *ngIf="loading" class="flex justify-center items-center py-12">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+</div>
+
+<div *ngIf="!loading && project" class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <div class="flex items-center gap-3">
+                <h1 class="text-2xl font-bold text-gray-900">{{ project.name }}</h1>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                    [class]="getStatusBadgeClass(project.isActive)">
+                    {{ getStatusText(project.isActive) }}
+                </span>
+            </div>
+            <p class="text-sm text-gray-500 mt-1">
+                Created by {{ project.createdByUser?.username }} on {{ project.createdAt | date:'MMM d, y' }}
+            </p>
+        </div>
+        <div class="flex gap-2">
+            <a routerLink="/tasks" [queryParams]="{ projectId: project.id }"
+                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                View Tasks
+            </a>
+            <a *ngIf="isAdminOrManager" [routerLink]="['/projects', project.id, 'edit']"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                Edit Project
+            </a>
+            <button *ngIf="isAdminOrManager" (click)="toggleStatus()"
+                class="px-4 py-2 border border-yellow-300 text-yellow-700 rounded-md text-sm font-medium hover:bg-yellow-50">
+                {{ project.isActive ? 'Deactivate' : 'Activate' }}
+            </button>
+            <button *ngIf="isAdminOrManager" (click)="deleteProject()"
+                class="px-4 py-2 border border-red-300 text-red-700 rounded-md text-sm font-medium hover:bg-red-50">
+                Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Description -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Description</h3>
+        <p class="text-gray-600">{{ project.description || 'No description provided.' }}</p>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <p class="text-sm text-gray-500">Total Tasks</p>
+            <p class="text-2xl font-bold text-gray-900">{{ summary?.totalTasks || 0 }}</p>
+        </div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <p class="text-sm text-gray-500">Completed</p>
+            <p class="text-2xl font-bold text-green-600">{{ summary?.completedTasks || 0 }}</p>
+        </div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <p class="text-sm text-gray-500">In Progress</p>
+            <p class="text-2xl font-bold text-yellow-600">{{ summary?.inProgressTasks || 0 }}</p>
+        </div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <p class="text-sm text-gray-500">Completion</p>
+            <p class="text-2xl font-bold text-indigo-600">{{ summary?.completionPercentage || 0 }}%</p>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="text-sm font-medium text-gray-700">Overall Progress</h3>
+            <span class="text-sm font-medium text-gray-900">{{ summary?.completionPercentage || 0 }}%</span>
+        </div>
+        <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-500"
+                [class]="getProgressColor(summary?.completionPercentage || 0)"
+                [style.width]="(summary?.completionPercentage || 0) + '%'"></div>
+        </div>
+        <div class="flex justify-between text-xs text-gray-500 mt-2">
+            <span>0%</span>
+            <span>100%</span>
+        </div>
+    </div>
+
+    <!-- Task Breakdown -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-4">Task Breakdown</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="text-center">
+                <div class="text-2xl font-bold text-gray-900">{{ summary?.toDoTasks || 0 }}</div>
+                <div class="text-xs text-gray-500">To Do</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-yellow-600">{{ summary?.inProgressTasks || 0 }}</div>
+                <div class="text-xs text-gray-500">In Progress</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-green-600">{{ summary?.completedTasks || 0 }}</div>
+                <div class="text-xs text-gray-500">Completed</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-red-600">{{ summary?.cancelledTasks || 0 }}</div>
+                <div class="text-xs text-gray-500">Cancelled</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Date Information -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Timeline</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <p class="text-sm text-gray-500">Start Date</p>
+                <p class="text-sm font-medium text-gray-900">{{ project.startDate | date:'MMM d, y' }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500">End Date</p>
+                <p class="text-sm font-medium text-gray-900">{{ project.endDate ? (project.endDate | date:'MMM d, y') :
+                    'Not set' }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex flex-wrap gap-2">
+        <a routerLink="/tasks/create" [queryParams]="{ projectId: project.id }"
+            class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+            + Create Task
+        </a>
+        <a routerLink="/projects"
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50">
+            Back to Projects
+        </a>
+    </div>
+</div>
+```
+
+## Update App Module with HttpClient Interceptors
+```ts
+// src/app/app.config.ts (Update)
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZoneChangeDetection  } from '@angular/core';
+import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
+import { provideHttpClient, withInterceptorsFromDi, HTTP_INTERCEPTORS } from '@angular/common/http';
+import { routes } from './app.routes';
+import { AuthInterceptor } from './core/interceptors/auth.interceptor';
+import { ErrorInterceptor } from './core/interceptors/error.interceptor';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZoneChangeDetection({ eventCoalescing: true }),
+    provideRouter(
+      routes,
+      withComponentInputBinding(),
+      withRouterConfig({
+        paramsInheritanceStrategy: 'always'
+      })
+    ),
+    provideHttpClient(withInterceptorsFromDi()),
+    {
+      provide: HTTP_INTERCEPTORS,
+      useClass: AuthInterceptor,
+      multi: true
+    },
+    {
+      provide: HTTP_INTERCEPTORS,
+      useClass: ErrorInterceptor,
+      multi: true
+    }
+  ]
+};
+
+```
