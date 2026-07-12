@@ -2724,3 +2724,1492 @@ export const appConfig: ApplicationConfig = {
 };
 
 ```
+
+# Part 12 : Task Management Components / Task Module
+## Task Service
+
+```ts
+// src/app/core/services/task.service.ts
+// src/app/core/services/task.service.ts
+
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+import { ApiService } from './api.service';
+import {
+    Task,
+    CreateTaskRequest,
+    UpdateTaskRequest,
+    UpdateTaskStatusRequest,
+    TaskFilter,
+    PagedResponse,
+    TaskStatistics
+} from '../models/task.model';
+
+@Injectable({
+    providedIn: 'root'
+})
+export class TaskService {
+    constructor(private apiService: ApiService) { }
+
+    getTasks(filter: TaskFilter): Observable<PagedResponse<Task>> {
+        return this.apiService.get<PagedResponse<Task>>('tasks', filter);
+    }
+
+    getTaskById(id: string): Observable<Task> {
+        return this.apiService.get<Task>(`tasks/${id}`);
+    }
+
+    createTask(request: CreateTaskRequest): Observable<Task> {
+        return this.apiService.post<Task>('tasks', request);
+    }
+
+    updateTask(id: string, request: UpdateTaskRequest): Observable<Task> {
+        return this.apiService.put<Task>(`tasks/${id}`, request);
+    }
+
+    deleteTask(id: string): Observable<void> {
+        return this.apiService.delete<void>(`tasks/${id}`);
+    }
+
+    updateTaskStatus(id: string, request: UpdateTaskStatusRequest): Observable<Task> {
+        return this.apiService.patch<Task>(`tasks/${id}/status`, request);
+    }
+
+    assignTask(id: string, userId: string): Observable<Task> {
+        return this.apiService.patch<Task>(`tasks/${id}/assign`, { userId });
+    }
+
+    getTaskStatistics(projectId?: string, userId?: string): Observable<TaskStatistics> {
+        const params: any = {};
+        if (projectId) params.projectId = projectId;
+        if (userId) params.userId = userId;
+        return this.apiService.get<TaskStatistics>('tasks/statistics', params);
+    }
+
+    getOverdueTasks(): Observable<Task[]> {
+        return this.apiService.get<Task[]>('tasks/overdue');
+    }
+
+    getTasksDueSoon(daysThreshold: number = 7): Observable<Task[]> {
+        return this.apiService.get<Task[]>('tasks/due-soon', { daysThreshold });
+    }
+
+    bulkUpdateStatus(taskIds: string[], newStatus: number): Observable<void> {
+        return this.apiService.patch<void>('tasks/bulk-status', { taskIds, newStatus });
+    }
+}
+```
+
+## AI Service for Task Improvement
+```ts
+// src/app/core/services/ai.service.ts
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+import { ApiService } from './api.service';
+import { TaskImprovementRequest, TaskImprovementResponse } from '../models/ai.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AiService {
+  constructor(private apiService: ApiService) {}
+
+  improveTaskDescription(request: TaskImprovementRequest): Observable<TaskImprovementResponse> {
+    return this.apiService.post<TaskImprovementResponse>('ai/improve-task', request);
+  }
+
+  generateSummary(description: string): Observable<string> {
+    return this.apiService.post<string>('ai/summarize', { description });
+  }
+
+  suggestActions(title: string, description: string, status: string): Observable<string[]> {
+    return this.apiService.post<string[]>('ai/suggest-actions', { title, description, status });
+  }
+
+  checkHealth(): Observable<boolean> {
+    return this.apiService.get<boolean>('ai/health');
+  }
+}
+```
+
+## Task List Component
+```ts
+// src/app/features/tasks/task-list/task-list.component.ts
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterModule, ActivatedRoute } from '@angular/router';
+import { FormsModule } from '@angular/forms';
+import { TaskService } from '../../../core/services/task.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { Task, TaskFilter, PagedResponse, TaskStatus, TaskPriority } from '../../../core/models/task.model';
+import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
+
+@Component({
+    selector: 'app-task-list',
+    standalone: true,
+    imports: [CommonModule, RouterModule, FormsModule],
+    templateUrl: './task-list.component.html',
+    styleUrls: ['./task-list.component.css']
+})
+export class TaskListComponent implements OnInit, OnDestroy {
+    tasks: Task[] = [];
+    loading = false;
+    totalItems = 0;
+    currentPage = 1;
+    pageSize = 10;
+    totalPages = 0;
+
+    filter: TaskFilter = {
+        pageNumber: 1,
+        pageSize: 10,
+        sortBy: 'dueDate',
+        sortDescending: false
+    };
+
+    searchTerm = '';
+    showFilters = false;
+    isAdminOrManager = false;
+    projectId: string | null = null;
+
+    // Available filter options
+    taskStatuses = Object.values(TaskStatus).filter(v => typeof v === 'number') as number[];
+    taskPriorities = Object.values(TaskPriority).filter(v => typeof v === 'number') as number[];
+    statusLabels = ['To Do', 'In Progress', 'Completed', 'Cancelled'];
+    priorityLabels = ['Low', 'Medium', 'High', 'Critical'];
+
+    // Bulk operations
+    selectedTasks: Set<string> = new Set();
+    bulkStatus: TaskStatus | null = null;
+    showBulkActions = false;
+
+    private destroy$ = new Subject<void>();
+    private searchSubject = new Subject<string>();
+
+    constructor(
+        private taskService: TaskService,
+        private authService: AuthService,
+        private notificationService: NotificationService,
+        private route: ActivatedRoute
+    ) {
+        this.searchSubject.pipe(
+            debounceTime(300),
+            distinctUntilChanged(),
+            takeUntil(this.destroy$)
+        ).subscribe(searchTerm => {
+            this.filter.searchTerm = searchTerm || undefined;
+            this.filter.pageNumber = 1;
+            this.loadTasks();
+        });
+    }
+
+    ngOnInit(): void {
+        this.isAdminOrManager = this.authService.isAdmin() || this.authService.isProjectManager();
+
+        // Check for projectId from query params
+        this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
+            if (params['projectId']) {
+                this.projectId = params['projectId'];
+                this.filter.projectId = params['projectId'];
+                this.loadTasks();
+            }
+        });
+
+        if (!this.projectId) {
+            this.loadTasks();
+        }
+    }
+
+    ngOnDestroy(): void {
+        this.destroy$.next();
+        this.destroy$.complete();
+    }
+
+    loadTasks(): void {
+        this.loading = true;
+        this.taskService.getTasks(this.filter)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (response: PagedResponse<Task>) => {
+                    this.tasks = response.items;
+                    this.totalItems = response.totalCount;
+                    this.currentPage = response.pageNumber;
+                    this.pageSize = response.pageSize;
+                    this.totalPages = response.totalPages;
+                    this.loading = false;
+                    this.selectedTasks.clear();
+                },
+                error: () => {
+                    this.loading = false;
+                    this.notificationService.error('Failed to load tasks');
+                }
+            });
+    }
+
+    onSearch(event: Event): void {
+        const value = (event.target as HTMLInputElement).value;
+        this.searchSubject.next(value);
+    }
+
+    clearSearch(): void {
+        this.searchTerm = '';
+        this.filter.searchTerm = undefined;
+        this.filter.pageNumber = 1;
+        this.loadTasks();
+    }
+
+    applyFilters(): void {
+        this.filter.pageNumber = 1;
+        this.loadTasks();
+        this.showFilters = false;
+    }
+
+    resetFilters(): void {
+        this.filter.status = undefined;
+        this.filter.priority = undefined;
+        this.filter.dueDateFrom = undefined;
+        this.filter.dueDateTo = undefined;
+        this.filter.isOverdue = undefined;
+        this.filter.showOnlyAssignedToMe = undefined;
+        this.filter.sortBy = 'dueDate';
+        this.filter.sortDescending = false;
+        this.filter.pageNumber = 1;
+        this.loadTasks();
+    }
+
+    changePage(page: number): void {
+        if (page < 1 || page > this.totalPages) return;
+        this.filter.pageNumber = page;
+        this.loadTasks();
+    }
+
+    changeSort(field: string): void {
+        if (this.filter.sortBy === field) {
+            this.filter.sortDescending = !this.filter.sortDescending;
+        } else {
+            this.filter.sortBy = field;
+            this.filter.sortDescending = false;
+        }
+        this.loadTasks();
+    }
+
+    getSortIcon(field: string): string {
+        if (this.filter.sortBy !== field) return '↕';
+        return this.filter.sortDescending ? '↓' : '↑';
+    }
+
+    deleteTask(id: string, title: string): void {
+        if (!confirm(`Are you sure you want to delete task "${title}"?`)) return;
+
+        this.taskService.deleteTask(id)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success(`Task "${title}" deleted successfully`);
+                    this.loadTasks();
+                },
+                error: () => {
+                    this.notificationService.error('Failed to delete task');
+                }
+            });
+    }
+
+    updateTaskStatus(id: string, status: TaskStatus): void {
+        this.taskService.updateTaskStatus(id, { status })
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success('Task status updated');
+                    this.loadTasks();
+                },
+                error: () => {
+                    this.notificationService.error('Failed to update task status');
+                }
+            });
+    }
+
+    toggleTaskSelection(id: string): void {
+        if (this.selectedTasks.has(id)) {
+            this.selectedTasks.delete(id);
+        } else {
+            this.selectedTasks.add(id);
+        }
+        this.showBulkActions = this.selectedTasks.size > 0;
+    }
+
+    selectAllTasks(): void {
+        if (this.selectedTasks.size === this.tasks.length) {
+            this.selectedTasks.clear();
+        } else {
+            this.tasks.forEach(task => this.selectedTasks.add(task.id));
+        }
+        this.showBulkActions = this.selectedTasks.size > 0;
+    }
+
+    applyBulkStatus(): void {
+        if (!this.bulkStatus || this.selectedTasks.size === 0) return;
+
+        if (!confirm(`Apply status to ${this.selectedTasks.size} tasks?`)) return;
+
+        this.taskService.bulkUpdateStatus(Array.from(this.selectedTasks), this.bulkStatus)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success('Bulk status update completed');
+                    this.selectedTasks.clear();
+                    this.showBulkActions = false;
+                    this.bulkStatus = null;
+                    this.loadTasks();
+                },
+                error: () => {
+                    this.notificationService.error('Failed to update tasks');
+                }
+            });
+    }
+
+    getStatusBadgeClass(status: TaskStatus): string {
+        const classes = {
+            [TaskStatus.ToDo]: 'bg-gray-100 text-gray-800',
+            [TaskStatus.InProgress]: 'bg-yellow-100 text-yellow-800',
+            [TaskStatus.Completed]: 'bg-green-100 text-green-800',
+            [TaskStatus.Cancelled]: 'bg-red-100 text-red-800'
+        };
+        return classes[status] || classes[TaskStatus.ToDo];
+    }
+
+    getStatusText(status: TaskStatus): string {
+        return this.statusLabels[status] || 'Unknown';
+    }
+
+    getPriorityBadgeClass(priority: TaskPriority): string {
+        const classes = {
+            [TaskPriority.Low]: 'bg-blue-100 text-blue-800',
+            [TaskPriority.Medium]: 'bg-green-100 text-green-800',
+            [TaskPriority.High]: 'bg-orange-100 text-orange-800',
+            [TaskPriority.Critical]: 'bg-red-100 text-red-800'
+        };
+        return classes[priority] || classes[TaskPriority.Low];
+    }
+
+    getPriorityText(priority: TaskPriority): string {
+        return this.priorityLabels[priority] || 'Unknown';
+    }
+
+    getDaysUntilDue(dueDate: Date): number {
+        const now = new Date();
+        const due = new Date(dueDate);
+        const diffTime = due.getTime() - now.getTime();
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    getDueDateClass(dueDate: Date): string {
+        const days = this.getDaysUntilDue(dueDate);
+        if (days < 0) return 'text-red-600 font-medium';
+        if (days <= 3) return 'text-orange-600';
+        return 'text-gray-500';
+    }
+
+    getPageNumbers(): number[] {
+        const pages = [];
+        const maxVisible = 5;
+        let start = Math.max(1, this.currentPage - Math.floor(maxVisible / 2));
+        let end = Math.min(this.totalPages, start + maxVisible - 1);
+
+        if (end - start + 1 < maxVisible) {
+            start = Math.max(1, end - maxVisible + 1);
+        }
+
+        for (let i = start; i <= end; i++) {
+            pages.push(i);
+        }
+        return pages;
+    }
+
+    // Helper for template Math
+    Math = Math;
+}
+```
+
+```html
+<!-- src/app/features/tasks/task-list/task-list.component.html -->
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Tasks</h1>
+            <p class="text-sm text-gray-500 mt-1">Manage all your tasks</p>
+        </div>
+        <div class="flex gap-2">
+            <button (click)="showFilters = !showFilters"
+                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                {{ showFilters ? 'Hide Filters' : 'Show Filters' }}
+            </button>
+            <a routerLink="/tasks/create" [queryParams]="projectId ? { projectId: projectId } : {}"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                + New Task
+            </a>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+        </div>
+        <input type="text" [(ngModel)]="searchTerm" (input)="onSearch($event)"
+            placeholder="Search tasks by title or description..."
+            class="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        <button *ngIf="searchTerm" (click)="clearSearch()" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+            <svg class="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div *ngIf="showFilters" class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select [(ngModel)]="filter.status"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option [ngValue]="undefined">All</option>
+                    <option *ngFor="let status of taskStatuses" [ngValue]="status">
+                        {{ statusLabels[status] }}
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                <select [(ngModel)]="filter.priority"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option [ngValue]="undefined">All</option>
+                    <option *ngFor="let priority of taskPriorities" [ngValue]="priority">
+                        {{ priorityLabels[priority] }}
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Overdue</label>
+                <select [(ngModel)]="filter.isOverdue"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option [ngValue]="undefined">All</option>
+                    <option [ngValue]="true">Overdue Only</option>
+                    <option [ngValue]="false">Not Overdue</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Due Date From</label>
+                <input type="date" [(ngModel)]="filter.dueDateFrom"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Due Date To</label>
+                <input type="date" [(ngModel)]="filter.dueDateTo"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div class="flex items-center">
+                <label class="flex items-center space-x-2 text-sm text-gray-700">
+                    <input type="checkbox" [(ngModel)]="filter.showOnlyAssignedToMe"
+                        class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                    <span>Show only assigned to me</span>
+                </label>
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+            <button (click)="resetFilters()"
+                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Reset
+            </button>
+            <button (click)="applyFilters()"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                Apply Filters
+            </button>
+        </div>
+    </div>
+
+    <!-- Bulk Actions -->
+    <div *ngIf="showBulkActions"
+        class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 flex flex-wrap items-center gap-4">
+        <span class="text-sm font-medium text-indigo-700">
+            {{ selectedTasks.size }} task(s) selected
+        </span>
+        <div class="flex items-center gap-2">
+            <select [(ngModel)]="bulkStatus"
+                class="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option [ngValue]="null">Change status to...</option>
+                <option *ngFor="let status of taskStatuses" [ngValue]="status">
+                    {{ statusLabels[status] }}
+                </option>
+            </select>
+            <button (click)="applyBulkStatus()" [disabled]="!bulkStatus"
+                class="px-3 py-1 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+                Apply
+            </button>
+        </div>
+        <button (click)="selectedTasks.clear(); showBulkActions = false"
+            class="text-sm text-gray-500 hover:text-gray-700">
+            Clear selection
+        </button>
+    </div>
+
+    <!-- Tasks Table -->
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div *ngIf="loading" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        </div>
+
+        <div *ngIf="!loading && tasks.length === 0" class="text-center py-12">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No tasks found</h3>
+            <p class="mt-1 text-sm text-gray-500">Get started by creating a new task.</p>
+            <div class="mt-6">
+                <a routerLink="/tasks/create" [queryParams]="projectId ? { projectId: projectId } : {}"
+                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                    + New Task
+                </a>
+            </div>
+        </div>
+
+        <div *ngIf="!loading && tasks.length > 0" class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left">
+                            <input type="checkbox" (change)="selectAllTasks()"
+                                [checked]="selectedTasks.size === tasks.length && tasks.length > 0"
+                                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                        </th>
+                        <th (click)="changeSort('title')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Task {{ getSortIcon('title') }}
+                        </th>
+                        <th (click)="changeSort('status')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Status {{ getSortIcon('status') }}
+                        </th>
+                        <th (click)="changeSort('priority')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Priority {{ getSortIcon('priority') }}
+                        </th>
+                        <th (click)="changeSort('dueDate')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Due Date {{ getSortIcon('dueDate') }}
+                        </th>
+                        <th (click)="changeSort('projectName')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Project {{ getSortIcon('projectName') }}
+                        </th>
+                        <th (click)="changeSort('assignedto')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Assigned To {{ getSortIcon('assignedto') }}
+                        </th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr *ngFor="let task of tasks" class="hover:bg-gray-50"
+                        [class.bg-red-50]="task.isOverdue && task.status !== 2 && task.status !== 3">
+                        <td class="px-6 py-4">
+                            <input type="checkbox" [checked]="selectedTasks.has(task.id)"
+                                (change)="toggleTaskSelection(task.id)"
+                                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                        </td>
+                        <td class="px-6 py-4">
+                            <div>
+                                <a [routerLink]="['/tasks', task.id]"
+                                    class="text-sm font-medium text-gray-900 hover:text-indigo-600">
+                                    {{ task.title }}
+                                </a>
+                                <p class="text-xs text-gray-500 truncate max-w-xs">{{ task.description }}</p>
+                                <div *ngIf="task.isOverdue && task.status !== 2 && task.status !== 3" class="mt-1">
+                                    <span class="text-xs text-red-600 font-medium">Overdue</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                                [class]="getStatusBadgeClass(task.status)">
+                                {{ getStatusText(task.status) }}
+                            </span>
+                            <div class="mt-1">
+                                <select (change)="updateTaskStatus(task.id, $event.target.value)"
+                                    class="text-xs border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option *ngFor="let status of taskStatuses" [value]="status"
+                                        [selected]="status === task.status">
+                                        {{ statusLabels[status] }}
+                                    </option>
+                                </select>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                                [class]="getPriorityBadgeClass(task.priority)">
+                                {{ getPriorityText(task.priority) }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="text-sm" [class]="getDueDateClass(task.dueDate)">
+                                {{ task.dueDate | date:'MMM d, y' }}
+                            </span>
+                            <span *ngIf="task.daysUntilDue !== undefined" class="text-xs text-gray-400 block">
+                                {{ task.daysUntilDue > 0 ? task.daysUntilDue + ' days left' : task.daysUntilDue === 0 ?
+                                'Today' : task.daysUntilDue + ' days overdue' }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <a [routerLink]="['/projects', task.projectId]"
+                                class="text-sm text-indigo-600 hover:text-indigo-900">
+                                {{ task.projectName }}
+                            </a>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500">
+                            {{ task.assignedToUser?.username || 'Unassigned' }}
+                        </td>
+                        <td class="px-6 py-4 text-right text-sm font-medium">
+                            <div class="flex justify-end gap-2">
+                                <a [routerLink]="['/tasks', task.id]" class="text-indigo-600 hover:text-indigo-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                </a>
+                                <a [routerLink]="['/tasks', task.id, 'edit']" class="text-blue-600 hover:text-blue-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                </a>
+                                <button (click)="deleteTask(task.id, task.title)"
+                                    class="text-red-600 hover:text-red-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div *ngIf="!loading && tasks.length > 0"
+        class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+        <div class="flex flex-1 justify-between sm:hidden">
+            <button (click)="changePage(currentPage - 1)" [disabled]="currentPage === 1"
+                class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                Previous
+            </button>
+            <button (click)="changePage(currentPage + 1)" [disabled]="currentPage === totalPages"
+                class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                Next
+            </button>
+        </div>
+        <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm text-gray-700">
+                    Showing
+                    <span class="font-medium">{{ ((currentPage - 1) * pageSize) + 1 }}</span>
+                    to
+                    <span class="font-medium">{{ Math.min(currentPage * pageSize, totalItems) }}</span>
+                    of
+                    <span class="font-medium">{{ totalItems }}</span>
+                    results
+                </p>
+            </div>
+            <div>
+                <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <button (click)="changePage(currentPage - 1)" [disabled]="currentPage === 1"
+                        class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50">
+                        <span class="sr-only">Previous</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                    <button *ngFor="let page of getPageNumbers()" (click)="changePage(page)"
+                        [class]="page === currentPage
+              ? 'relative z-10 inline-flex items-center bg-indigo-600 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
+              : 'relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'">
+                        {{ page }}
+                    </button>
+                    <button (click)="changePage(currentPage + 1)" [disabled]="currentPage === totalPages"
+                        class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50">
+                        <span class="sr-only">Next</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+```
+
+## Task Form Component
+
+```ts
+// src/app/features/tasks/task-form/task-form.component.ts
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router, RouterModule, ActivatedRoute } from '@angular/router';
+import { TaskService } from '../../../core/services/task.service';
+import { ProjectService } from '../../../core/services/project.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { TaskPriority, TaskStatus} from '../../../core/models/task.model';
+import { Project } from '../../../core/models/project.model';
+import { User } from '../../../core/models/user.model';
+import { finalize, takeUntil } from 'rxjs/operators';
+import { Subject } from 'rxjs';
+
+@Component({
+    selector: 'app-task-form',
+    standalone: true,
+    imports: [CommonModule, ReactiveFormsModule, RouterModule],
+    templateUrl: './task-form.component.html',
+    styleUrls: ['./task-form.component.css']
+})
+export class TaskFormComponent implements OnInit, OnDestroy {
+    taskForm: FormGroup;
+    isLoading = false;
+    isEditMode = false;
+    taskId: string | null = null;
+    projects: Project[] = [];
+    users: User[] = [];
+    projectId: string | null = null;
+
+    // Enums for template
+    taskPriorities = Object.values(TaskPriority).filter(v => typeof v === 'number') as number[];
+    priorityLabels = ['Low', 'Medium', 'High', 'Critical'];
+    statusLabels = ['To Do', 'In Progress', 'Completed', 'Cancelled'];
+
+    private destroy$ = new Subject<void>();
+
+    constructor(
+        private fb: FormBuilder,
+        private taskService: TaskService,
+        private projectService: ProjectService,
+        private authService: AuthService,
+        private router: Router,
+        private route: ActivatedRoute,
+        private notificationService: NotificationService
+    ) {
+        this.taskForm = this.fb.group({
+            title: ['', [Validators.required, Validators.maxLength(200)]],
+            description: ['', [Validators.maxLength(1000)]],
+            priority: [TaskPriority.Medium, [Validators.required]],
+            dueDate: ['', [Validators.required]],
+            estimatedHours: [0, [Validators.min(0), Validators.max(999)]],
+            projectId: ['', [Validators.required]],
+            assignedToUserId: [null]
+        });
+    }
+
+    ngOnInit(): void {
+        // Get projectId from query params
+        this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
+            if (params['projectId']) {
+                this.projectId = params['projectId'];
+                this.taskForm.patchValue({ projectId: params['projectId'] });
+            }
+        });
+
+        this.taskId = this.route.snapshot.paramMap.get('id');
+        this.isEditMode = !!this.taskId;
+
+        this.loadProjects();
+        this.loadUsers();
+
+        if (this.isEditMode) {
+            this.loadTask();
+        }
+    }
+
+    ngOnDestroy(): void {
+        this.destroy$.next();
+        this.destroy$.complete();
+    }
+
+    loadProjects(): void {
+        this.projectService.getProjects({ pageNumber: 1, pageSize: 100, sortBy: 'name', sortDescending: false })
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (response) => {
+                    this.projects = response.items;
+                },
+                error: () => {
+                    this.notificationService.error('Failed to load projects');
+                }
+            });
+    }
+
+    loadUsers(): void {
+        // This would need a user service to get all users
+        // For now, we'll use the current user
+        const currentUser = this.authService.getCurrentUser();
+        if (currentUser) {
+            this.users = [currentUser];
+        }
+    }
+
+    loadTask(): void {
+        this.isLoading = true;
+        this.taskService.getTaskById(this.taskId!)
+            .pipe(
+                takeUntil(this.destroy$),
+                finalize(() => this.isLoading = false)
+            )
+            .subscribe({
+                next: (task) => {
+                    this.taskForm.patchValue({
+                        title: task.title,
+                        description: task.description,
+                        priority: task.priority,
+                        dueDate: this.formatDate(task.dueDate),
+                        estimatedHours: task.estimatedHours,
+                        projectId: task.projectId,
+                        assignedToUserId: task.assignedToUserId
+                    });
+                },
+                error: () => {
+                    this.notificationService.error('Failed to load task');
+                    this.router.navigate(['/tasks']);
+                }
+            });
+    }
+
+    onSubmit(): void {
+        if (this.taskForm.invalid) {
+            this.markFormGroupTouched(this.taskForm);
+            return;
+        }
+
+        this.isLoading = true;
+        const formData = this.taskForm.value;
+        formData.dueDate = new Date(formData.dueDate);
+
+        const request = this.isEditMode
+            ? this.taskService.updateTask(this.taskId!, formData)
+            : this.taskService.createTask(formData);
+
+        request.pipe(
+            takeUntil(this.destroy$),
+            finalize(() => this.isLoading = false)
+        ).subscribe({
+            next: () => {
+                const message = this.isEditMode
+                    ? 'Task updated successfully'
+                    : 'Task created successfully';
+                this.notificationService.success(message);
+                this.router.navigate(['/tasks']);
+            },
+            error: (error) => {
+                this.notificationService.error(error.message || 'Failed to save task');
+            }
+        });
+    }
+
+    onCancel(): void {
+        this.router.navigate(['/tasks']);
+    }
+
+    private markFormGroupTouched(formGroup: FormGroup): void {
+        Object.values(formGroup.controls).forEach(control => {
+            control.markAsTouched();
+            if (control instanceof FormGroup) {
+                this.markFormGroupTouched(control);
+            }
+        });
+    }
+
+    private formatDate(date: Date | string): string {
+        if (!date) return '';
+        const d = new Date(date);
+        return d.toISOString().split('T')[0];
+    }
+}
+```
+
+```html
+<!-- src/app/features/tasks/task-form/task-form.component.html -->
+ <div class="max-w-3xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-900">
+                {{ isEditMode ? 'Edit Task' : 'Create New Task' }}
+            </h2>
+            <p class="text-sm text-gray-500 mt-1">
+                {{ isEditMode ? 'Update task details' : 'Add a new task to the system' }}
+            </p>
+        </div>
+
+        <form [formGroup]="taskForm" (ngSubmit)="onSubmit()" class="p-6 space-y-6">
+            <!-- Title -->
+            <div>
+                <label for="title" class="block text-sm font-medium text-gray-700">
+                    Task Title <span class="text-red-500">*</span>
+                </label>
+                <input id="title" type="text" formControlName="title"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Enter task title"
+                    [class.border-red-500]="taskForm.get('title')?.invalid && taskForm.get('title')?.touched" />
+                <div *ngIf="taskForm.get('title')?.invalid && taskForm.get('title')?.touched"
+                    class="text-red-500 text-xs mt-1">
+                    <span *ngIf="taskForm.get('title')?.errors?.['required']">Task title is required</span>
+                    <span *ngIf="taskForm.get('title')?.errors?.['maxlength']">Maximum 200 characters</span>
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700">
+                    Description
+                </label>
+                <textarea id="description" rows="4" formControlName="description"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Describe the task in detail"
+                    [class.border-red-500]="taskForm.get('description')?.invalid && taskForm.get('description')?.touched"></textarea>
+                <div *ngIf="taskForm.get('description')?.invalid && taskForm.get('description')?.touched"
+                    class="text-red-500 text-xs mt-1">
+                    <span *ngIf="taskForm.get('description')?.errors?.['maxlength']">Maximum 1000 characters</span>
+                </div>
+            </div>
+
+            <!-- Priority and Estimated Hours -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="priority" class="block text-sm font-medium text-gray-700">
+                        Priority <span class="text-red-500">*</span>
+                    </label>
+                    <select id="priority" formControlName="priority"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <option *ngFor="let priority of taskPriorities" [value]="priority">
+                            {{ priorityLabels[priority] }}
+                        </option>
+                    </select>
+                </div>
+                <div>
+                    <label for="estimatedHours" class="block text-sm font-medium text-gray-700">
+                        Estimated Hours
+                    </label>
+                    <input id="estimatedHours" type="number" formControlName="estimatedHours"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        [class.border-red-500]="taskForm.get('estimatedHours')?.invalid && taskForm.get('estimatedHours')?.touched" />
+                    <div *ngIf="taskForm.get('estimatedHours')?.invalid && taskForm.get('estimatedHours')?.touched"
+                        class="text-red-500 text-xs mt-1">
+                        <span *ngIf="taskForm.get('estimatedHours')?.errors?.['min']">Must be 0 or greater</span>
+                        <span *ngIf="taskForm.get('estimatedHours')?.errors?.['max']">Maximum 999 hours</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Due Date -->
+            <div>
+                <label for="dueDate" class="block text-sm font-medium text-gray-700">
+                    Due Date <span class="text-red-500">*</span>
+                </label>
+                <input id="dueDate" type="date" formControlName="dueDate"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    [class.border-red-500]="taskForm.get('dueDate')?.invalid && taskForm.get('dueDate')?.touched" />
+                <div *ngIf="taskForm.get('dueDate')?.invalid && taskForm.get('dueDate')?.touched"
+                    class="text-red-500 text-xs mt-1">
+                    <span *ngIf="taskForm.get('dueDate')?.errors?.['required']">Due date is required</span>
+                </div>
+            </div>
+
+            <!-- Project -->
+            <div>
+                <label for="projectId" class="block text-sm font-medium text-gray-700">
+                    Project <span class="text-red-500">*</span>
+                </label>
+                <select id="projectId" formControlName="projectId"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    [class.border-red-500]="taskForm.get('projectId')?.invalid && taskForm.get('projectId')?.touched">
+                    <option value="">Select a project</option>
+                    <option *ngFor="let project of projects" [value]="project.id">
+                        {{ project.name }}
+                    </option>
+                </select>
+                <div *ngIf="taskForm.get('projectId')?.invalid && taskForm.get('projectId')?.touched"
+                    class="text-red-500 text-xs mt-1">
+                    <span *ngIf="taskForm.get('projectId')?.errors?.['required']">Project is required</span>
+                </div>
+            </div>
+
+            <!-- Assigned To -->
+            <div>
+                <label for="assignedToUserId" class="block text-sm font-medium text-gray-700">
+                    Assign To
+                </label>
+                <select id="assignedToUserId" formControlName="assignedToUserId"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    <option [ngValue]="null">Unassigned</option>
+                    <option *ngFor="let user of users" [value]="user.id">
+                        {{ user.firstName }} {{ user.lastName }} ({{ user.username }})
+                    </option>
+                </select>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" (click)="onCancel()"
+                    class="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Cancel
+                </button>
+                <button type="submit" [disabled]="isLoading"
+                    class="w-full sm:w-auto px-4 py-2 bg-indigo-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50">
+                    <span class="flex items-center justify-center">
+                        <svg *ngIf="isLoading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
+                        </svg>
+                        {{ isLoading ? 'Saving...' : (isEditMode ? 'Update Task' : 'Create Task') }}
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+```
+
+## Task Detail Component
+```ts
+// src/app/features/tasks/task-detail/task-detail.component.ts
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterModule, ActivatedRoute, Router } from '@angular/router';
+import { FormsModule } from '@angular/forms';
+import { TaskService } from '../../../core/services/task.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { AiService } from '../../../core/services/ai.service';
+import { Task, TaskStatus, TaskPriority } from '../../../core/models/task.model';
+import { Subject, takeUntil } from 'rxjs';
+
+@Component({
+    selector: 'app-task-detail',
+    standalone: true,
+    imports: [CommonModule, RouterModule, FormsModule],
+    templateUrl: './task-detail.component.html',
+    styleUrls: ['./task-detail.component.css']
+})
+export class TaskDetailComponent implements OnInit, OnDestroy {
+    task: Task | null = null;
+    loading = true;
+    isAdminOrManager = false;
+    canEdit = false;
+
+    // AI Improvement
+    showAIImprovement = false;
+    isImproving = false;
+    improvementResult: any = null;
+    aiOptions = {
+        correctGrammar: true,
+        improveClarity: true,
+        makeProfessional: true,
+        expandDescription: true,
+        makeActionable: true,
+        tone: 'Professional'
+    };
+
+    // Status update
+    newStatus: TaskStatus | null = null;
+    statusLabels = ['To Do', 'In Progress', 'Completed', 'Cancelled'];
+    statusColors = ['gray', 'yellow', 'green', 'red'];
+    priorityLabels = ['Low', 'Medium', 'High', 'Critical'];
+    priorityColors = ['blue', 'green', 'orange', 'red'];
+
+    private destroy$ = new Subject<void>();
+
+    constructor(
+        private route: ActivatedRoute,
+        private router: Router,
+        private taskService: TaskService,
+        private authService: AuthService,
+        private notificationService: NotificationService,
+        private aiService: AiService
+    ) { }
+
+    ngOnInit(): void {
+        const user = this.authService.getCurrentUser();
+        this.isAdminOrManager = this.authService.isAdmin() || this.authService.isProjectManager();
+        this.loadTask();
+    }
+
+    ngOnDestroy(): void {
+        this.destroy$.next();
+        this.destroy$.complete();
+    }
+
+    loadTask(): void {
+        const id = this.route.snapshot.paramMap.get('id');
+        if (!id) {
+            this.router.navigate(['/tasks']);
+            return;
+        }
+
+        this.loading = true;
+        this.taskService.getTaskById(id)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (task) => {
+                    this.task = task;
+                    this.canEdit = this.isAdminOrManager ||
+                        task.assignedToUserId === this.authService.getCurrentUser()?.id ||
+                        task.createdByUser?.id === this.authService.getCurrentUser()?.id;
+                    this.loading = false;
+                },
+                error: () => {
+                    this.notificationService.error('Failed to load task');
+                    this.loading = false;
+                    this.router.navigate(['/tasks']);
+                }
+            });
+    }
+
+    updateStatus(status: TaskStatus): void {
+        if (!this.task) return;
+
+        this.taskService.updateTaskStatus(this.task.id, { status })
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success('Task status updated');
+                    this.loadTask();
+                },
+                error: () => {
+                    this.notificationService.error('Failed to update task status');
+                }
+            });
+    }
+
+    deleteTask(): void {
+        if (!this.task) return;
+        if (!confirm(`Are you sure you want to delete task "${this.task.title}"?`)) return;
+
+        this.taskService.deleteTask(this.task.id)
+            .pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success('Task deleted successfully');
+                    this.router.navigate(['/tasks']);
+                },
+                error: () => {
+                    this.notificationService.error('Failed to delete task');
+                }
+            });
+    }
+
+    improveWithAI(): void {
+        if (!this.task) return;
+
+        this.isImproving = true;
+        this.aiService.improveTaskDescription({
+            originalTitle: this.task.title,
+            originalDescription: this.task.description,
+            options: this.aiOptions
+        }).pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: (result) => {
+                    this.improvementResult = result;
+                    this.showAIImprovement = true;
+                    this.isImproving = false;
+                    this.notificationService.success('AI improvement generated');
+                },
+                error: () => {
+                    this.isImproving = false;
+                    this.notificationService.error('Failed to improve task description');
+                }
+            });
+    }
+
+    applyAIImprovement(): void {
+        if (!this.task || !this.improvementResult) return;
+
+        this.taskService.updateTask(this.task.id, {
+            title: this.improvementResult.improvedTitle,
+            description: this.improvementResult.improvedDescription,
+            priority: this.task.priority,
+            dueDate: this.task.dueDate,
+            estimatedHours: this.task.estimatedHours,
+            actualHours: this.task.actualHours,
+            assignedToUserId: this.task.assignedToUserId
+        }).pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success('Task updated with AI improvements');
+                    this.showAIImprovement = false;
+                    this.improvementResult = null;
+                    this.loadTask();
+                },
+                error: () => {
+                    this.notificationService.error('Failed to apply AI improvements');
+                }
+            });
+    }
+
+    dismissAIImprovement(): void {
+        this.showAIImprovement = false;
+        this.improvementResult = null;
+    }
+
+    getStatusBadgeClass(status: TaskStatus): string {
+        const classes = {
+            [TaskStatus.ToDo]: 'bg-gray-100 text-gray-800',
+            [TaskStatus.InProgress]: 'bg-yellow-100 text-yellow-800',
+            [TaskStatus.Completed]: 'bg-green-100 text-green-800',
+            [TaskStatus.Cancelled]: 'bg-red-100 text-red-800'
+        };
+        return classes[status] || classes[TaskStatus.ToDo];
+    }
+
+    getStatusText(status: TaskStatus): string {
+        return this.statusLabels[status] || 'Unknown';
+    }
+
+    getPriorityBadgeClass(priority: TaskPriority): string {
+        const classes = {
+            [TaskPriority.Low]: 'bg-blue-100 text-blue-800',
+            [TaskPriority.Medium]: 'bg-green-100 text-green-800',
+            [TaskPriority.High]: 'bg-orange-100 text-orange-800',
+            [TaskPriority.Critical]: 'bg-red-100 text-red-800'
+        };
+        return classes[priority] || classes[TaskPriority.Low];
+    }
+
+    getPriorityText(priority: TaskPriority): string {
+        return this.priorityLabels[priority] || 'Unknown';
+    }
+}
+```
+
+```html
+<!-- src/app/features/tasks/task-detail/task-detail.component.html -->
+
+<div *ngIf="loading" class="flex justify-center items-center py-12">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+</div>
+
+<div *ngIf="!loading && task" class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <h1 class="text-2xl font-bold text-gray-900">{{ task.title }}</h1>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full" [class]="getStatusBadgeClass(task.status)">
+                    {{ getStatusText(task.status) }}
+                </span>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                    [class]="getPriorityBadgeClass(task.priority)">
+                    {{ getPriorityText(task.priority) }}
+                </span>
+                <span *ngIf="task.isOverdue && task.status !== 2 && task.status !== 3"
+                    class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                    Overdue
+                </span>
+            </div>
+            <p class="text-sm text-gray-500 mt-1">
+                Created by {{ task.createdByUser?.username }} on {{ task.createdAt | date:'MMM d, y' }}
+                <span *ngIf="task.assignedToUser"> • Assigned to {{ task.assignedToUser.username }}</span>
+            </p>
+        </div>
+        <div class="flex gap-2 flex-wrap">
+            <a [routerLink]="['/tasks', task.id, 'edit']" *ngIf="canEdit"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                Edit Task
+            </a>
+            <button (click)="deleteTask()" *ngIf="isAdminOrManager"
+                class="px-4 py-2 border border-red-300 text-red-700 rounded-md text-sm font-medium hover:bg-red-50">
+                Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Status Update -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-3">Update Status</h3>
+        <div class="flex flex-wrap gap-2">
+            <button *ngFor="let status of [0,1,2,3]" (click)="updateStatus(status)"
+                class="px-4 py-2 rounded-md text-sm font-medium transition-colors" [class]="status === task.status
+          ? 'bg-indigo-600 text-white'
+          : 'border border-gray-300 text-gray-700 hover:bg-gray-50'">
+                {{ statusLabels[status] }}
+            </button>
+        </div>
+    </div>
+
+    <!-- Description -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Description</h3>
+        <p class="text-gray-600 whitespace-pre-wrap">{{ task.description || 'No description provided.' }}</p>
+    </div>
+
+    <!-- AI Improvement -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="text-sm font-medium text-gray-700">AI Improvement</h3>
+            <button (click)="improveWithAI()" [disabled]="isImproving"
+                class="px-4 py-2 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+                <span class="flex items-center">
+                    <svg *ngIf="!isImproving" class="w-4 h-4 mr-2" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <svg *ngIf="isImproving" class="animate-spin w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg"
+                        fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                        </circle>
+                        <path class="opacity-75" fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                        </path>
+                    </svg>
+                    {{ isImproving ? 'Improving...' : 'Improve with AI' }}
+                </span>
+            </button>
+        </div>
+
+        <!-- AI Improvement Result -->
+        <div *ngIf="showAIImprovement && improvementResult"
+            class="mt-4 border border-purple-200 rounded-lg p-4 bg-purple-50">
+            <h4 class="text-sm font-medium text-purple-900 mb-2">AI Suggested Improvement</h4>
+
+            <div class="mb-3">
+                <p class="text-xs font-medium text-gray-500">Improved Title</p>
+                <p class="text-sm text-gray-900">{{ improvementResult.improvedTitle }}</p>
+            </div>
+
+            <div class="mb-3">
+                <p class="text-xs font-medium text-gray-500">Improved Description</p>
+                <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ improvementResult.improvedDescription }}</p>
+            </div>
+
+            <div *ngIf="improvementResult.keyPoints?.length" class="mb-3">
+                <p class="text-xs font-medium text-gray-500">Key Points</p>
+                <ul class="list-disc list-inside text-sm text-gray-700">
+                    <li *ngFor="let point of improvementResult.keyPoints">{{ point }}</li>
+                </ul>
+            </div>
+
+            <div *ngIf="improvementResult.suggestedActions?.length" class="mb-3">
+                <p class="text-xs font-medium text-gray-500">Suggested Actions</p>
+                <ul class="list-disc list-inside text-sm text-gray-700">
+                    <li *ngFor="let action of improvementResult.suggestedActions">{{ action }}</li>
+                </ul>
+            </div>
+
+            <div class="flex gap-2 mt-4">
+                <button (click)="applyAIImprovement()"
+                    class="px-4 py-2 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700">
+                    Apply Changes
+                </button>
+                <button (click)="dismissAIImprovement()"
+                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50">
+                    Dismiss
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Details -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 class="text-sm font-medium text-gray-700 mb-3">Task Details</h3>
+            <dl class="space-y-2">
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Project</dt>
+                    <dd class="text-sm font-medium text-gray-900">
+                        <a [routerLink]="['/projects', task.projectId]" class="text-indigo-600 hover:text-indigo-900">
+                            {{ task.projectName }}
+                        </a>
+                    </dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Due Date</dt>
+                    <dd class="text-sm font-medium"
+                        [class.text-red-600]="task.isOverdue && task.status !== 2 && task.status !== 3">
+                        {{ task.dueDate | date:'MMM d, y' }}
+                        <span *ngIf="task.daysUntilDue !== undefined" class="text-xs text-gray-400 block text-right">
+                            {{ task.daysUntilDue > 0 ? task.daysUntilDue + ' days left' : task.daysUntilDue === 0 ?
+                            'Today' : task.daysUntilDue + ' days overdue' }}
+                        </span>
+                    </dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Estimated Hours</dt>
+                    <dd class="text-sm font-medium text-gray-900">{{ task.estimatedHours }}h</dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Actual Hours</dt>
+                    <dd class="text-sm font-medium text-gray-900">{{ task.actualHours }}h</dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Created At</dt>
+                    <dd class="text-sm font-medium text-gray-900">{{ task.createdAt | date:'MMM d, y h:mm a' }}</dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Updated At</dt>
+                    <dd class="text-sm font-medium text-gray-900">{{ task.updatedAt | date:'MMM d, y h:mm a' }}</dd>
+                </div>
+            </dl>
+        </div>
+
+        <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 class="text-sm font-medium text-gray-700 mb-3">Assigned To</h3>
+            <div *ngIf="task.assignedToUser; else unassigned" class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                    <span class="text-indigo-600 font-medium">
+                        {{ task.assignedToUser.firstName[0] }}{{ task.assignedToUser.lastName[0] }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">
+                        {{ task.assignedToUser.firstName }} {{ task.assignedToUser.lastName }}
+                    </p>
+                    <p class="text-xs text-gray-500">{{ task.assignedToUser.username }}</p>
+                    <p class="text-xs text-gray-500">{{ task.assignedToUser.role }}</p>
+                </div>
+            </div>
+            <ng-template #unassigned>
+                <p class="text-sm text-gray-500">No user assigned</p>
+            </ng-template>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex flex-wrap gap-2">
+        <a routerLink="/tasks"
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50">
+            Back to Tasks
+        </a>
+        <a [routerLink]="['/tasks', task.id, 'edit']" *ngIf="canEdit"
+            class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+            Edit Task
+        </a>
+    </div>
+</div>
+```

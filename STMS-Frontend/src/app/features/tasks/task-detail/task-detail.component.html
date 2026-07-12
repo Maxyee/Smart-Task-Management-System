@@ -1,0 +1,202 @@
+<div *ngIf="loading" class="flex justify-center items-center py-12">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+</div>
+
+<div *ngIf="!loading && task" class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <h1 class="text-2xl font-bold text-gray-900">{{ task.title }}</h1>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full" [class]="getStatusBadgeClass(task.status)">
+                    {{ getStatusText(task.status) }}
+                </span>
+                <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                    [class]="getPriorityBadgeClass(task.priority)">
+                    {{ getPriorityText(task.priority) }}
+                </span>
+                <span *ngIf="task.isOverdue && task.status !== 2 && task.status !== 3"
+                    class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                    Overdue
+                </span>
+            </div>
+            <p class="text-sm text-gray-500 mt-1">
+                Created by {{ task.createdByUser?.username }} on {{ task.createdAt | date:'MMM d, y' }}
+                <span *ngIf="task.assignedToUser"> • Assigned to {{ task.assignedToUser.username }}</span>
+            </p>
+        </div>
+        <div class="flex gap-2 flex-wrap">
+            <a [routerLink]="['/tasks', task.id, 'edit']" *ngIf="canEdit"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                Edit Task
+            </a>
+            <button (click)="deleteTask()" *ngIf="isAdminOrManager"
+                class="px-4 py-2 border border-red-300 text-red-700 rounded-md text-sm font-medium hover:bg-red-50">
+                Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Status Update -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-3">Update Status</h3>
+        <div class="flex flex-wrap gap-2">
+            <button *ngFor="let status of [0,1,2,3]" (click)="updateStatus(status)"
+                class="px-4 py-2 rounded-md text-sm font-medium transition-colors" [class]="status === task.status
+          ? 'bg-indigo-600 text-white'
+          : 'border border-gray-300 text-gray-700 hover:bg-gray-50'">
+                {{ statusLabels[status] }}
+            </button>
+        </div>
+    </div>
+
+    <!-- Description -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Description</h3>
+        <p class="text-gray-600 whitespace-pre-wrap">{{ task.description || 'No description provided.' }}</p>
+    </div>
+
+    <!-- AI Improvement -->
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="text-sm font-medium text-gray-700">AI Improvement</h3>
+            <button (click)="improveWithAI()" [disabled]="isImproving"
+                class="px-4 py-2 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+                <span class="flex items-center">
+                    <svg *ngIf="!isImproving" class="w-4 h-4 mr-2" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <svg *ngIf="isImproving" class="animate-spin w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg"
+                        fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                        </circle>
+                        <path class="opacity-75" fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                        </path>
+                    </svg>
+                    {{ isImproving ? 'Improving...' : 'Improve with AI' }}
+                </span>
+            </button>
+        </div>
+
+        <!-- AI Improvement Result -->
+        <div *ngIf="showAIImprovement && improvementResult"
+            class="mt-4 border border-purple-200 rounded-lg p-4 bg-purple-50">
+            <h4 class="text-sm font-medium text-purple-900 mb-2">AI Suggested Improvement</h4>
+
+            <div class="mb-3">
+                <p class="text-xs font-medium text-gray-500">Improved Title</p>
+                <p class="text-sm text-gray-900">{{ improvementResult.improvedTitle }}</p>
+            </div>
+
+            <div class="mb-3">
+                <p class="text-xs font-medium text-gray-500">Improved Description</p>
+                <p class="text-sm text-gray-900 whitespace-pre-wrap">{{ improvementResult.improvedDescription }}</p>
+            </div>
+
+            <div *ngIf="improvementResult.keyPoints?.length" class="mb-3">
+                <p class="text-xs font-medium text-gray-500">Key Points</p>
+                <ul class="list-disc list-inside text-sm text-gray-700">
+                    <li *ngFor="let point of improvementResult.keyPoints">{{ point }}</li>
+                </ul>
+            </div>
+
+            <div *ngIf="improvementResult.suggestedActions?.length" class="mb-3">
+                <p class="text-xs font-medium text-gray-500">Suggested Actions</p>
+                <ul class="list-disc list-inside text-sm text-gray-700">
+                    <li *ngFor="let action of improvementResult.suggestedActions">{{ action }}</li>
+                </ul>
+            </div>
+
+            <div class="flex gap-2 mt-4">
+                <button (click)="applyAIImprovement()"
+                    class="px-4 py-2 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700">
+                    Apply Changes
+                </button>
+                <button (click)="dismissAIImprovement()"
+                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50">
+                    Dismiss
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Details -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 class="text-sm font-medium text-gray-700 mb-3">Task Details</h3>
+            <dl class="space-y-2">
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Project</dt>
+                    <dd class="text-sm font-medium text-gray-900">
+                        <a [routerLink]="['/projects', task.projectId]" class="text-indigo-600 hover:text-indigo-900">
+                            {{ task.projectName }}
+                        </a>
+                    </dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Due Date</dt>
+                    <dd class="text-sm font-medium"
+                        [class.text-red-600]="task.isOverdue && task.status !== 2 && task.status !== 3">
+                        {{ task.dueDate | date:'MMM d, y' }}
+                        <span *ngIf="task.daysUntilDue !== undefined" class="text-xs text-gray-400 block text-right">
+                            {{ task.daysUntilDue > 0 ? task.daysUntilDue + ' days left' : task.daysUntilDue === 0 ?
+                            'Today' : task.daysUntilDue + ' days overdue' }}
+                        </span>
+                    </dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Estimated Hours</dt>
+                    <dd class="text-sm font-medium text-gray-900">{{ task.estimatedHours }}h</dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Actual Hours</dt>
+                    <dd class="text-sm font-medium text-gray-900">{{ task.actualHours }}h</dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Created At</dt>
+                    <dd class="text-sm font-medium text-gray-900">{{ task.createdAt | date:'MMM d, y h:mm a' }}</dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-sm text-gray-500">Updated At</dt>
+                    <dd class="text-sm font-medium text-gray-900">{{ task.updatedAt | date:'MMM d, y h:mm a' }}</dd>
+                </div>
+            </dl>
+        </div>
+
+        <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 class="text-sm font-medium text-gray-700 mb-3">Assigned To</h3>
+            <div *ngIf="task.assignedToUser; else unassigned" class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                    <span class="text-indigo-600 font-medium">
+                        {{ task.assignedToUser.firstName[0] }}{{ task.assignedToUser.lastName[0] }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-900">
+                        {{ task.assignedToUser.firstName }} {{ task.assignedToUser.lastName }}
+                    </p>
+                    <p class="text-xs text-gray-500">{{ task.assignedToUser.username }}</p>
+                    <p class="text-xs text-gray-500">{{ task.assignedToUser.role }}</p>
+                </div>
+            </div>
+            <ng-template #unassigned>
+                <p class="text-sm text-gray-500">No user assigned</p>
+            </ng-template>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex flex-wrap gap-2">
+        <a routerLink="/tasks"
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50">
+            Back to Tasks
+        </a>
+        <a [routerLink]="['/tasks', task.id, 'edit']" *ngIf="canEdit"
+            class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+            Edit Task
+        </a>
+    </div>
+</div>

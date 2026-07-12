@@ -1,0 +1,330 @@
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Tasks</h1>
+            <p class="text-sm text-gray-500 mt-1">Manage all your tasks</p>
+        </div>
+        <div class="flex gap-2">
+            <button (click)="showFilters = !showFilters"
+                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                {{ showFilters ? 'Hide Filters' : 'Show Filters' }}
+            </button>
+            <a routerLink="/tasks/create" [queryParams]="projectId ? { projectId: projectId } : {}"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                + New Task
+            </a>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+        </div>
+        <input type="text" [(ngModel)]="searchTerm" (input)="onSearch($event)"
+            placeholder="Search tasks by title or description..."
+            class="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        <button *ngIf="searchTerm" (click)="clearSearch()" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+            <svg class="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div *ngIf="showFilters" class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select [(ngModel)]="filter.status"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option [ngValue]="undefined">All</option>
+                    <option *ngFor="let status of taskStatuses" [ngValue]="status">
+                        {{ statusLabels[status] }}
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                <select [(ngModel)]="filter.priority"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option [ngValue]="undefined">All</option>
+                    <option *ngFor="let priority of taskPriorities" [ngValue]="priority">
+                        {{ priorityLabels[priority] }}
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Overdue</label>
+                <select [(ngModel)]="filter.isOverdue"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option [ngValue]="undefined">All</option>
+                    <option [ngValue]="true">Overdue Only</option>
+                    <option [ngValue]="false">Not Overdue</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Due Date From</label>
+                <input type="date" [(ngModel)]="filter.dueDateFrom"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Due Date To</label>
+                <input type="date" [(ngModel)]="filter.dueDateTo"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div class="flex items-center">
+                <label class="flex items-center space-x-2 text-sm text-gray-700">
+                    <input type="checkbox" [(ngModel)]="filter.showOnlyAssignedToMe"
+                        class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                    <span>Show only assigned to me</span>
+                </label>
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+            <button (click)="resetFilters()"
+                class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Reset
+            </button>
+            <button (click)="applyFilters()"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">
+                Apply Filters
+            </button>
+        </div>
+    </div>
+
+    <!-- Bulk Actions -->
+    <div *ngIf="showBulkActions"
+        class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 flex flex-wrap items-center gap-4">
+        <span class="text-sm font-medium text-indigo-700">
+            {{ selectedTasks.size }} task(s) selected
+        </span>
+        <div class="flex items-center gap-2">
+            <select [(ngModel)]="bulkStatus"
+                class="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option [ngValue]="null">Change status to...</option>
+                <option *ngFor="let status of taskStatuses" [ngValue]="status">
+                    {{ statusLabels[status] }}
+                </option>
+            </select>
+            <button (click)="applyBulkStatus()" [disabled]="!bulkStatus"
+                class="px-3 py-1 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+                Apply
+            </button>
+        </div>
+        <button (click)="selectedTasks.clear(); showBulkActions = false"
+            class="text-sm text-gray-500 hover:text-gray-700">
+            Clear selection
+        </button>
+    </div>
+
+    <!-- Tasks Table -->
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div *ngIf="loading" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        </div>
+
+        <div *ngIf="!loading && tasks.length === 0" class="text-center py-12">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No tasks found</h3>
+            <p class="mt-1 text-sm text-gray-500">Get started by creating a new task.</p>
+            <div class="mt-6">
+                <a routerLink="/tasks/create" [queryParams]="projectId ? { projectId: projectId } : {}"
+                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                    + New Task
+                </a>
+            </div>
+        </div>
+
+        <div *ngIf="!loading && tasks.length > 0" class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left">
+                            <input type="checkbox" (change)="selectAllTasks()"
+                                [checked]="selectedTasks.size === tasks.length && tasks.length > 0"
+                                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                        </th>
+                        <th (click)="changeSort('title')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Task {{ getSortIcon('title') }}
+                        </th>
+                        <th (click)="changeSort('status')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Status {{ getSortIcon('status') }}
+                        </th>
+                        <th (click)="changeSort('priority')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Priority {{ getSortIcon('priority') }}
+                        </th>
+                        <th (click)="changeSort('dueDate')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Due Date {{ getSortIcon('dueDate') }}
+                        </th>
+                        <th (click)="changeSort('projectName')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Project {{ getSortIcon('projectName') }}
+                        </th>
+                        <th (click)="changeSort('assignedto')"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                            Assigned To {{ getSortIcon('assignedto') }}
+                        </th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr *ngFor="let task of tasks" class="hover:bg-gray-50"
+                        [class.bg-red-50]="task.isOverdue && task.status !== 2 && task.status !== 3">
+                        <td class="px-6 py-4">
+                            <input type="checkbox" [checked]="selectedTasks.has(task.id)"
+                                (change)="toggleTaskSelection(task.id)"
+                                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                        </td>
+                        <td class="px-6 py-4">
+                            <div>
+                                <a [routerLink]="['/tasks', task.id]"
+                                    class="text-sm font-medium text-gray-900 hover:text-indigo-600">
+                                    {{ task.title }}
+                                </a>
+                                <p class="text-xs text-gray-500 truncate max-w-xs">{{ task.description }}</p>
+                                <div *ngIf="task.isOverdue && task.status !== 2 && task.status !== 3" class="mt-1">
+                                    <span class="text-xs text-red-600 font-medium">Overdue</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                                [class]="getStatusBadgeClass(task.status)">
+                                {{ getStatusText(task.status) }}
+                            </span>
+                            <div class="mt-1">
+                                <select (change)="updateTaskStatus(task.id, $event.target.value)"
+                                    class="text-xs border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                    <option *ngFor="let status of taskStatuses" [value]="status"
+                                        [selected]="status === task.status">
+                                        {{ statusLabels[status] }}
+                                    </option>
+                                </select>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                                [class]="getPriorityBadgeClass(task.priority)">
+                                {{ getPriorityText(task.priority) }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="text-sm" [class]="getDueDateClass(task.dueDate)">
+                                {{ task.dueDate | date:'MMM d, y' }}
+                            </span>
+                            <span *ngIf="task.daysUntilDue !== undefined" class="text-xs text-gray-400 block">
+                                {{ task.daysUntilDue > 0 ? task.daysUntilDue + ' days left' : task.daysUntilDue === 0 ?
+                                'Today' : task.daysUntilDue + ' days overdue' }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <a [routerLink]="['/projects', task.projectId]"
+                                class="text-sm text-indigo-600 hover:text-indigo-900">
+                                {{ task.projectName }}
+                            </a>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500">
+                            {{ task.assignedToUser?.username || 'Unassigned' }}
+                        </td>
+                        <td class="px-6 py-4 text-right text-sm font-medium">
+                            <div class="flex justify-end gap-2">
+                                <a [routerLink]="['/tasks', task.id]" class="text-indigo-600 hover:text-indigo-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                </a>
+                                <a [routerLink]="['/tasks', task.id, 'edit']" class="text-blue-600 hover:text-blue-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                </a>
+                                <button (click)="deleteTask(task.id, task.title)"
+                                    class="text-red-600 hover:text-red-900">
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div *ngIf="!loading && tasks.length > 0"
+        class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+        <div class="flex flex-1 justify-between sm:hidden">
+            <button (click)="changePage(currentPage - 1)" [disabled]="currentPage === 1"
+                class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                Previous
+            </button>
+            <button (click)="changePage(currentPage + 1)" [disabled]="currentPage === totalPages"
+                class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                Next
+            </button>
+        </div>
+        <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm text-gray-700">
+                    Showing
+                    <span class="font-medium">{{ ((currentPage - 1) * pageSize) + 1 }}</span>
+                    to
+                    <span class="font-medium">{{ Math.min(currentPage * pageSize, totalItems) }}</span>
+                    of
+                    <span class="font-medium">{{ totalItems }}</span>
+                    results
+                </p>
+            </div>
+            <div>
+                <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <button (click)="changePage(currentPage - 1)" [disabled]="currentPage === 1"
+                        class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50">
+                        <span class="sr-only">Previous</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                    <button *ngFor="let page of getPageNumbers()" (click)="changePage(page)"
+                        [class]="page === currentPage
+              ? 'relative z-10 inline-flex items-center bg-indigo-600 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
+              : 'relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'">
+                        {{ page }}
+                    </button>
+                    <button (click)="changePage(currentPage + 1)" [disabled]="currentPage === totalPages"
+                        class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50">
+                        <span class="sr-only">Next</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
