@@ -886,3 +886,177 @@ export class RoleGuard implements CanActivate {
   }
 }
 ```
+
+# Part 6 : Auth Module (Login/Register)
+```ts
+// src/app/features/auth/login/login.component.ts
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router, RouterModule } from '@angular/router';
+import { AuthService } from '../../../core/services/auth.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { finalize } from 'rxjs/operators';
+
+@Component({
+  selector: 'app-login',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule, RouterModule],
+  templateUrl: './login.component.html',
+  styleUrls: ['./login.component.css']
+})
+export class LoginComponent implements OnInit {
+  loginForm: FormGroup;
+  isLoading = false;
+  submitted = false;
+  returnUrl = '/dashboard';
+  showPassword = false;
+
+  constructor(
+    private fb: FormBuilder,
+    private authService: AuthService,
+    private router: Router,
+    private notificationService: NotificationService
+  ) {
+    this.loginForm = this.fb.group({
+      email: ['', [Validators.required, Validators.email]],
+      password: ['', [Validators.required, Validators.minLength(6)]],
+      rememberMe: [false]
+    });
+  }
+
+  ngOnInit(): void {
+    // Redirect if already logged in
+    this.authService.isAuthenticated$.subscribe(isAuth => {
+      if (isAuth) {
+        this.router.navigate(['/dashboard']);
+      }
+    });
+  }
+
+  onSubmit(): void {
+    this.submitted = true;
+
+    if (this.loginForm.invalid) {
+      return;
+    }
+
+    this.isLoading = true;
+    const { email, password, rememberMe } = this.loginForm.value;
+
+    this.authService.login({ email, password })
+      .pipe(finalize(() => this.isLoading = false))
+      .subscribe({
+        next: () => {
+          this.notificationService.success('Login successful!');
+          this.router.navigate([this.returnUrl]);
+        },
+        error: (error) => {
+          this.notificationService.error(error.message || 'Login failed');
+        }
+      });
+  }
+
+  togglePasswordVisibility(): void {
+    this.showPassword = !this.showPassword;
+  }
+}
+```
+
+```html
+<!-- src/app/features/auth/login/login.component.html -->
+<div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div>
+            <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                Smart Task Management
+            </h2>
+            <p class="mt-2 text-center text-sm text-gray-600">
+                Sign in to your account
+            </p>
+        </div>
+
+        <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="mt-8 space-y-6">
+            <div class="rounded-md shadow-sm -space-y-px">
+                <div>
+                    <label for="email" class="sr-only">Email address</label>
+                    <input id="email" type="email" formControlName="email"
+                        class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                        placeholder="Email address"
+                        [class.border-red-500]="submitted && loginForm.get('email')?.invalid" />
+                    <div *ngIf="submitted && loginForm.get('email')?.invalid" class="text-red-500 text-xs mt-1">
+                        <span *ngIf="loginForm.get('email')?.errors?.['required']">Email is required</span>
+                        <span *ngIf="loginForm.get('email')?.errors?.['email']">Please enter a valid email</span>
+                    </div>
+                </div>
+
+                <div class="relative">
+                    <label for="password" class="sr-only">Password</label>
+                    <input id="password" [type]="showPassword ? 'text' : 'password'" formControlName="password"
+                        class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                        placeholder="Password"
+                        [class.border-red-500]="submitted && loginForm.get('password')?.invalid" />
+                    <button type="button" (click)="togglePasswordVisibility()"
+                        class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5">
+                        <span class="text-gray-500">{{ showPassword ? 'Hide' : 'Show' }}</span>
+                    </button>
+                    <div *ngIf="submitted && loginForm.get('password')?.invalid" class="text-red-500 text-xs mt-1">
+                        <span *ngIf="loginForm.get('password')?.errors?.['required']">Password is required</span>
+                        <span *ngIf="loginForm.get('password')?.errors?.['minlength']">Password must be at least 6
+                            characters</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <input id="remember-me" type="checkbox" formControlName="rememberMe"
+                        class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                    <label for="remember-me" class="ml-2 block text-sm text-gray-900">
+                        Remember me
+                    </label>
+                </div>
+
+                <div class="text-sm">
+                    <a routerLink="/forgot-password" class="font-medium text-indigo-600 hover:text-indigo-500">
+                        Forgot your password?
+                    </a>
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" [disabled]="isLoading"
+                    class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50">
+                    <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                        <svg *ngIf="!isLoading" class="h-5 w-5 text-indigo-500 group-hover:text-indigo-400"
+                            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+                            aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        <svg *ngIf="isLoading" class="animate-spin h-5 w-5 text-indigo-500"
+                            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
+                        </svg>
+                    </span>
+                    {{ isLoading ? 'Signing in...' : 'Sign in' }}
+                </button>
+            </div>
+
+            <div class="text-center">
+                <p class="text-sm text-gray-600">
+                    Don't have an account?
+                    <a routerLink="/register" class="font-medium text-indigo-600 hover:text-indigo-500">
+                        Register here
+                    </a>
+                </p>
+            </div>
+        </form>
+    </div>
+</div>
+```
