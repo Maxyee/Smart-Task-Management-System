@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-//using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Text;
 using SmartTaskManagement.API.Middleware;
@@ -13,9 +12,6 @@ using SmartTaskManagement.Infrastructure.Services;
 using SmartTaskManagement.Infrastructure.Settings;
 using Microsoft.AspNetCore.Identity;
 using SmartTaskManagement.Domain.Entities;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi;
 using FluentValidation;
@@ -72,20 +68,6 @@ public class Program
                    [new OpenApiSecuritySchemeReference("Bearer", document)] = []
             });
 
-            // c.AddSecurityRequirement(new OpenApiSecurityRequirement
-            // {
-            //     {
-            //         new OpenApiSecurityScheme
-            //         {
-            //             Reference = new OpenApiReference
-            //             {
-            //                 Type = ReferenceType.SecurityScheme,
-            //                 Id = "Bearer"
-            //             }
-            //         },
-            //         Array.Empty<string>()
-            //     }
-            // });
         });
 
 
@@ -177,6 +159,7 @@ public class Program
         builder.Services.AddScoped<ITaskService, TaskService>();
         builder.Services.AddScoped<IDashboardService, DashboardService>();
         builder.Services.AddScoped<IAiService, AiService>();
+        builder.Services.AddScoped<IUserService, UserService>();
 
         // Configure CORS
         builder.Services.AddCors(options =>
