@@ -1,0 +1,158 @@
+<div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div>
+            <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                Create your account
+            </h2>
+            <p class="mt-2 text-center text-sm text-gray-600">
+                Join Smart Task Management System
+            </p>
+        </div>
+
+        <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="mt-8 space-y-6">
+            <div class="rounded-md shadow-sm space-y-4">
+                <!-- First Name & Last Name -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="firstName" class="block text-sm font-medium text-gray-700">First Name</label>
+                        <input id="firstName" type="text" formControlName="firstName"
+                            class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                            [class.border-red-500]="submitted && registerForm.get('firstName')?.invalid" />
+                        <div *ngIf="submitted && registerForm.get('firstName')?.invalid"
+                            class="text-red-500 text-xs mt-1">
+                            <span *ngIf="registerForm.get('firstName')?.errors?.['required']">First name is
+                                required</span>
+                            <span *ngIf="registerForm.get('firstName')?.errors?.['minlength']">Minimum 2
+                                characters</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="lastName" class="block text-sm font-medium text-gray-700">Last Name</label>
+                        <input id="lastName" type="text" formControlName="lastName"
+                            class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                            [class.border-red-500]="submitted && registerForm.get('lastName')?.invalid" />
+                        <div *ngIf="submitted && registerForm.get('lastName')?.invalid"
+                            class="text-red-500 text-xs mt-1">
+                            <span *ngIf="registerForm.get('lastName')?.errors?.['required']">Last name is
+                                required</span>
+                            <span *ngIf="registerForm.get('lastName')?.errors?.['minlength']">Minimum 2
+                                characters</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Username -->
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+                    <input id="username" type="text" formControlName="username"
+                        class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                        [class.border-red-500]="submitted && registerForm.get('username')?.invalid" />
+                    <div *ngIf="submitted && registerForm.get('username')?.invalid" class="text-red-500 text-xs mt-1">
+                        <span *ngIf="registerForm.get('username')?.errors?.['required']">Username is required</span>
+                        <span *ngIf="registerForm.get('username')?.errors?.['minlength']">Minimum 3 characters</span>
+                    </div>
+                </div>
+
+                <!-- Email -->
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700">Email Address</label>
+                    <input id="email" type="email" formControlName="email"
+                        class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                        [class.border-red-500]="submitted && registerForm.get('email')?.invalid" />
+                    <div *ngIf="submitted && registerForm.get('email')?.invalid" class="text-red-500 text-xs mt-1">
+                        <span *ngIf="registerForm.get('email')?.errors?.['required']">Email is required</span>
+                        <span *ngIf="registerForm.get('email')?.errors?.['email']">Please enter a valid email</span>
+                    </div>
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                    <div class="relative">
+                        <input id="password" [type]="showPassword ? 'text' : 'password'" formControlName="password"
+                            class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                            [class.border-red-500]="submitted && registerForm.get('password')?.invalid" />
+                        <button type="button" (click)="togglePasswordVisibility()"
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5">
+                            <span class="text-gray-500">{{ showPassword ? 'Hide' : 'Show' }}</span>
+                        </button>
+                    </div>
+                    <div *ngIf="submitted && registerForm.get('password')?.invalid" class="text-red-500 text-xs mt-1">
+                        <span *ngIf="registerForm.get('password')?.errors?.['required']">Password is required</span>
+                        <span *ngIf="registerForm.get('password')?.errors?.['minlength']">Minimum 6 characters</span>
+                    </div>
+                </div>
+
+                <!-- Confirm Password -->
+                <div>
+                    <label for="confirmPassword" class="block text-sm font-medium text-gray-700">Confirm
+                        Password</label>
+                    <div class="relative">
+                        <input id="confirmPassword" [type]="showConfirmPassword ? 'text' : 'password'"
+                            formControlName="confirmPassword"
+                            class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                            [class.border-red-500]="submitted && registerForm.get('confirmPassword')?.invalid" />
+                        <button type="button" (click)="toggleConfirmPasswordVisibility()"
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5">
+                            <span class="text-gray-500">{{ showConfirmPassword ? 'Hide' : 'Show' }}</span>
+                        </button>
+                    </div>
+                    <div *ngIf="submitted && registerForm.get('confirmPassword')?.invalid"
+                        class="text-red-500 text-xs mt-1">
+                        <span *ngIf="registerForm.get('confirmPassword')?.errors?.['required']">Please confirm your
+                            password</span>
+                        <span *ngIf="registerForm.errors?.['mismatch']">Passwords do not match</span>
+                    </div>
+                </div>
+
+                <!-- Terms -->
+                <div class="flex items-center">
+                    <input id="acceptTerms" type="checkbox" formControlName="acceptTerms"
+                        class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                    <label for="acceptTerms" class="ml-2 block text-sm text-gray-900">
+                        I agree to the
+                        <a href="#" class="text-indigo-600 hover:text-indigo-500">Terms of Service</a>
+                        and
+                        <a href="#" class="text-indigo-600 hover:text-indigo-500">Privacy Policy</a>
+                    </label>
+                </div>
+                <div *ngIf="submitted && registerForm.get('acceptTerms')?.invalid" class="text-red-500 text-xs">
+                    You must accept the terms and conditions
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" [disabled]="isLoading"
+                    class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50">
+                    <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                        <svg *ngIf="!isLoading" class="h-5 w-5 text-indigo-500 group-hover:text-indigo-400"
+                            xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        <svg *ngIf="isLoading" class="animate-spin h-5 w-5 text-indigo-500"
+                            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
+                        </svg>
+                    </span>
+                    {{ isLoading ? 'Creating account...' : 'Create account' }}
+                </button>
+            </div>
+
+            <div class="text-center">
+                <p class="text-sm text-gray-600">
+                    Already have an account?
+                    <a routerLink="/login" class="font-medium text-indigo-600 hover:text-indigo-500">
+                        Sign in here
+                    </a>
+                </p>
+            </div>
+        </form>
+    </div>
+</div>

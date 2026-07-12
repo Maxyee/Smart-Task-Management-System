@@ -1,0 +1,28 @@
+<!-- src/app/shared/components/notification/notification.component.html -->
+<div class="fixed top-4 right-4 z-50 space-y-2 max-w-md w-full">
+  <div
+    *ngFor="let notification of notifications"
+    [class]="getNotificationClasses(notification.type)"
+    role="alert"
+  >
+    <div class="flex items-start">
+      <div class="flex-shrink-0">
+        <span class="text-lg font-bold">{{ getIcon(notification.type) }}</span>
+      </div>
+      <div class="ml-3 flex-1">
+        <p class="text-sm font-medium">{{ notification.message }}</p>
+      </div>
+      <div class="ml-4 flex-shrink-0">
+        <button
+          (click)="removeNotification(notification.id)"
+          class="text-gray-400 hover:text-gray-600 focus:outline-none"
+        >
+          <span class="sr-only">Close</span>
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

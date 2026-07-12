@@ -1231,3 +1231,417 @@ export class HeaderComponent implements OnInit {
   }
 }
 ```
+
+# Part 10 : Register, Footer, Notification component
+```ts
+// src/app/features/auth/register/register.component.ts
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router, RouterModule } from '@angular/router';
+import { AuthService } from '../../../core/services/auth.service';
+import { NotificationService } from '../../../core/services/notification.service';
+import { finalize } from 'rxjs/operators';
+
+
+@Component({
+  selector: 'app-register',
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule, RouterModule],
+  templateUrl: './register.component.html',
+  styleUrls: ['./register.component.css']
+})
+export class RegisterComponent implements OnInit {
+  registerForm: FormGroup;
+  isLoading = false;
+  submitted = false;
+  showPassword = false;
+  showConfirmPassword = false;
+
+  constructor(
+    private fb: FormBuilder,
+    private authService: AuthService,
+    private router: Router,
+    private notificationService: NotificationService
+  ) {
+    this.registerForm = this.fb.group({
+      firstName: ['', [Validators.required, Validators.minLength(2)]],
+      lastName: ['', [Validators.required, Validators.minLength(2)]],
+      username: ['', [Validators.required, Validators.minLength(3)]],
+      email: ['', [Validators.required, Validators.email]],
+      password: ['', [Validators.required, Validators.minLength(6)]],
+      confirmPassword: ['', [Validators.required]],
+      acceptTerms: [false, [Validators.requiredTrue]]
+    }, {
+      validators: this.passwordMatchValidator
+    });
+  }
+
+  ngOnInit(): void {
+    // Redirect if already logged in
+    this.authService.isAuthenticated$.subscribe(isAuth => {
+      if (isAuth) {
+        this.router.navigate(['/dashboard']);
+      }
+    });
+  }
+
+  passwordMatchValidator(g: FormGroup) {
+    return g.get('password')?.value === g.get('confirmPassword')?.value
+      ? null : { mismatch: true };
+  }
+
+  onSubmit(): void {
+    this.submitted = true;
+
+    if (this.registerForm.invalid) {
+      return;
+    }
+
+    this.isLoading = true;
+    const { firstName, lastName, username, email, password, confirmPassword } = this.registerForm.value;
+
+    this.authService.register({
+      firstName,
+      lastName,
+      username,
+      email,
+      password,
+      confirmPassword
+    }).pipe(finalize(() => this.isLoading = false))
+      .subscribe({
+        next: () => {
+          this.notificationService.success('Registration successful! Welcome to STMS.');
+          this.router.navigate(['/dashboard']);
+        },
+        error: (error) => {
+          this.notificationService.error(error.message || 'Registration failed. Please try again.');
+        }
+      });
+  }
+
+  togglePasswordVisibility(): void {
+    this.showPassword = !this.showPassword;
+  }
+
+  toggleConfirmPasswordVisibility(): void {
+    this.showConfirmPassword = !this.showConfirmPassword;
+  }
+}
+```
+
+```html
+<div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-md w-full space-y-8">
+    <div>
+      <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+        Create your account
+      </h2>
+      <p class="mt-2 text-center text-sm text-gray-600">
+        Join Smart Task Management System
+      </p>
+    </div>
+
+    <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="mt-8 space-y-6">
+      <div class="rounded-md shadow-sm space-y-4">
+        <!-- First Name & Last Name -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label for="firstName" class="block text-sm font-medium text-gray-700">First Name</label>
+            <input
+              id="firstName"
+              type="text"
+              formControlName="firstName"
+              class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+              [class.border-red-500]="submitted && registerForm.get('firstName')?.invalid"
+            />
+            <div *ngIf="submitted && registerForm.get('firstName')?.invalid" class="text-red-500 text-xs mt-1">
+              <span *ngIf="registerForm.get('firstName')?.errors?.['required']">First name is required</span>
+              <span *ngIf="registerForm.get('firstName')?.errors?.['minlength']">Minimum 2 characters</span>
+            </div>
+          </div>
+
+          <div>
+            <label for="lastName" class="block text-sm font-medium text-gray-700">Last Name</label>
+            <input
+              id="lastName"
+              type="text"
+              formControlName="lastName"
+              class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+              [class.border-red-500]="submitted && registerForm.get('lastName')?.invalid"
+            />
+            <div *ngIf="submitted && registerForm.get('lastName')?.invalid" class="text-red-500 text-xs mt-1">
+              <span *ngIf="registerForm.get('lastName')?.errors?.['required']">Last name is required</span>
+              <span *ngIf="registerForm.get('lastName')?.errors?.['minlength']">Minimum 2 characters</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Username -->
+        <div>
+          <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+          <input
+            id="username"
+            type="text"
+            formControlName="username"
+            class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+            [class.border-red-500]="submitted && registerForm.get('username')?.invalid"
+          />
+          <div *ngIf="submitted && registerForm.get('username')?.invalid" class="text-red-500 text-xs mt-1">
+            <span *ngIf="registerForm.get('username')?.errors?.['required']">Username is required</span>
+            <span *ngIf="registerForm.get('username')?.errors?.['minlength']">Minimum 3 characters</span>
+          </div>
+        </div>
+
+        <!-- Email -->
+        <div>
+          <label for="email" class="block text-sm font-medium text-gray-700">Email Address</label>
+          <input
+            id="email"
+            type="email"
+            formControlName="email"
+            class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+            [class.border-red-500]="submitted && registerForm.get('email')?.invalid"
+          />
+          <div *ngIf="submitted && registerForm.get('email')?.invalid" class="text-red-500 text-xs mt-1">
+            <span *ngIf="registerForm.get('email')?.errors?.['required']">Email is required</span>
+            <span *ngIf="registerForm.get('email')?.errors?.['email']">Please enter a valid email</span>
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div>
+          <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+          <div class="relative">
+            <input
+              id="password"
+              [type]="showPassword ? 'text' : 'password'"
+              formControlName="password"
+              class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+              [class.border-red-500]="submitted && registerForm.get('password')?.invalid"
+            />
+            <button
+              type="button"
+              (click)="togglePasswordVisibility()"
+              class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5"
+            >
+              <span class="text-gray-500">{{ showPassword ? 'Hide' : 'Show' }}</span>
+            </button>
+          </div>
+          <div *ngIf="submitted && registerForm.get('password')?.invalid" class="text-red-500 text-xs mt-1">
+            <span *ngIf="registerForm.get('password')?.errors?.['required']">Password is required</span>
+            <span *ngIf="registerForm.get('password')?.errors?.['minlength']">Minimum 6 characters</span>
+          </div>
+        </div>
+
+        <!-- Confirm Password -->
+        <div>
+          <label for="confirmPassword" class="block text-sm font-medium text-gray-700">Confirm Password</label>
+          <div class="relative">
+            <input
+              id="confirmPassword"
+              [type]="showConfirmPassword ? 'text' : 'password'"
+              formControlName="confirmPassword"
+              class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+              [class.border-red-500]="submitted && registerForm.get('confirmPassword')?.invalid"
+            />
+            <button
+              type="button"
+              (click)="toggleConfirmPasswordVisibility()"
+              class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5"
+            >
+              <span class="text-gray-500">{{ showConfirmPassword ? 'Hide' : 'Show' }}</span>
+            </button>
+          </div>
+          <div *ngIf="submitted && registerForm.get('confirmPassword')?.invalid" class="text-red-500 text-xs mt-1">
+            <span *ngIf="registerForm.get('confirmPassword')?.errors?.['required']">Please confirm your password</span>
+            <span *ngIf="registerForm.errors?.['mismatch']">Passwords do not match</span>
+          </div>
+        </div>
+
+        <!-- Terms -->
+        <div class="flex items-center">
+          <input
+            id="acceptTerms"
+            type="checkbox"
+            formControlName="acceptTerms"
+            class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+          />
+          <label for="acceptTerms" class="ml-2 block text-sm text-gray-900">
+            I agree to the
+            <a href="#" class="text-indigo-600 hover:text-indigo-500">Terms of Service</a>
+            and
+            <a href="#" class="text-indigo-600 hover:text-indigo-500">Privacy Policy</a>
+          </label>
+        </div>
+        <div *ngIf="submitted && registerForm.get('acceptTerms')?.invalid" class="text-red-500 text-xs">
+          You must accept the terms and conditions
+        </div>
+      </div>
+
+      <div>
+        <button
+          type="submit"
+          [disabled]="isLoading"
+          class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+        >
+          <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+            <svg *ngIf="!isLoading" class="h-5 w-5 text-indigo-500 group-hover:text-indigo-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+            </svg>
+            <svg *ngIf="isLoading" class="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </span>
+          {{ isLoading ? 'Creating account...' : 'Create account' }}
+        </button>
+      </div>
+
+      <div class="text-center">
+        <p class="text-sm text-gray-600">
+          Already have an account?
+          <a routerLink="/login" class="font-medium text-indigo-600 hover:text-indigo-500">
+            Sign in here
+          </a>
+        </p>
+      </div>
+    </form>
+  </div>
+</div>
+```
+
+```ts
+// src/app/shared/components/footer/footer.component.ts
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';@Component({
+  selector: 'app-footer',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './footer.component.html',
+  styleUrls: ['./footer.component.css']
+})
+export class FooterComponent {
+  currentYear = new Date().getFullYear();
+}
+```
+
+```html
+<footer class="bg-white border-t border-gray-200 mt-auto">
+  <div class="container mx-auto px-4 py-6">
+    <div class="flex flex-col md:flex-row justify-between items-center">
+      <div class="flex items-center space-x-4">
+        <span class="text-sm text-gray-600">
+          &copy; {{ currentYear }} Smart Task Management System. All rights reserved.
+        </span>
+      </div>
+      <div class="flex items-center space-x-6 mt-4 md:mt-0">
+        <a href="#" class="text-sm text-gray-500 hover:text-gray-700">Privacy Policy</a>
+        <a href="#" class="text-sm text-gray-500 hover:text-gray-700">Terms of Service</a>
+        <a href="#" class="text-sm text-gray-500 hover:text-gray-700">Contact</a>
+      </div>
+      <div class="flex items-center space-x-4 mt-4 md:mt-0">
+        <span class="text-xs text-gray-400">v1.0.0</span>
+      </div>
+    </div>
+  </div>
+</footer>
+```
+
+```ts
+// src/app/shared/components/notification/notification.component.ts
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { NotificationService, Notification } from '../../../core/services/notification.service';
+import { Subscription } from 'rxjs';
+
+@Component({
+  selector: 'app-notification',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './notification.component.html',
+  styleUrls: ['./notification.component.css']
+})
+export class NotificationComponent implements OnInit, OnDestroy {
+  notifications: (Notification & { id: number })[] = [];
+  private subscription: Subscription | null = null;
+  private idCounter = 0;
+
+  constructor(private notificationService: NotificationService) {}
+
+  ngOnInit(): void {
+    this.subscription = this.notificationService.notifications$.subscribe(notification => {
+      const id = this.idCounter++;
+      this.notifications.push({ ...notification, id });
+      
+      if (notification.duration && notification.duration > 0) {
+        setTimeout(() => {
+          this.removeNotification(id);
+        }, notification.duration);
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+    }
+  }
+
+  removeNotification(id: number): void {
+    this.notifications = this.notifications.filter(n => n.id !== id);
+  }
+
+  getNotificationClasses(type: string): string {
+    const baseClasses = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md transform transition-all duration-500';
+    const typeClasses = {
+      success: 'bg-green-50 border-l-4 border-green-500 text-green-700',
+      error: 'bg-red-50 border-l-4 border-red-500 text-red-700',
+      warning: 'bg-yellow-50 border-l-4 border-yellow-500 text-yellow-700',
+      info: 'bg-blue-50 border-l-4 border-blue-500 text-blue-700'
+    };
+    return `${baseClasses} ${typeClasses[type as keyof typeof typeClasses] || typeClasses.info}`;
+  }
+
+  getIcon(type: string): string {
+    const icons = {
+      success: '✓',
+      error: '✕',
+      warning: '⚠',
+      info: 'ℹ'
+    };
+    return icons[type as keyof typeof icons] || icons.info;
+  }
+}
+```
+
+```html
+<!-- src/app/shared/components/notification/notification.component.html -->
+<div class="fixed top-4 right-4 z-50 space-y-2 max-w-md w-full">
+  <div
+    *ngFor="let notification of notifications"
+    [class]="getNotificationClasses(notification.type)"
+    role="alert"
+  >
+    <div class="flex items-start">
+      <div class="flex-shrink-0">
+        <span class="text-lg font-bold">{{ getIcon(notification.type) }}</span>
+      </div>
+      <div class="ml-3 flex-1">
+        <p class="text-sm font-medium">{{ notification.message }}</p>
+      </div>
+      <div class="ml-4 flex-shrink-0">
+        <button
+          (click)="removeNotification(notification.id)"
+          class="text-gray-400 hover:text-gray-600 focus:outline-none"
+        >
+          <span class="sr-only">Close</span>
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+```
