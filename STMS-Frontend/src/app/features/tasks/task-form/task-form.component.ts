@@ -318,6 +318,7 @@ export class TaskFormComponent implements OnInit, OnDestroy {
         this.isLoading = true;
         const formData = this.taskForm.value;
         formData.dueDate = new Date(formData.dueDate);
+        formData.priority = Number(formData.priority);
 
         // Ensure assignedToUserId is null if empty
         if (!formData.assignedToUserId) {
