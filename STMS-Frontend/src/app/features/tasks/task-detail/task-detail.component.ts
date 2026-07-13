@@ -5,11 +5,9 @@ import { FormsModule } from '@angular/forms';
 import { TaskService } from '../../../core/services/task.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
-import { AiService } from '../../../core/services/ai.service';
 import { Task, TaskStatus, TaskPriority } from '../../../core/models/task.model';
 import { Subject, takeUntil } from 'rxjs';
 import { TaskAiImprovementComponent } from '../task-ai-improvement/task-ai-improvement.component';
-import { TaskImprovementResponse } from '../../../core/models/ai.model';
 
 @Component({
     selector: 'app-task-detail',
@@ -24,23 +22,8 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
     isAdminOrManager = false;
     canEdit = false;
 
-    // AI Improvement
-    showAIImprovement = false;
-    isImproving = false;
+    // AI Improvement modal
     showAiImprovement = false;
-    aiImprovementResult: TaskImprovementResponse | null = null;
-    improvementResult: any = null;
-    aiOptions = {
-        correctGrammar: true,
-        improveClarity: true,
-        makeProfessional: true,
-        expandDescription: true,
-        makeActionable: true,
-        maxLength: 100,
-        tone: 'Professional',
-        language: 'English'
-    };
-
 
     // Status update
     newStatus: TaskStatus | null = null;
@@ -56,8 +39,7 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
         private router: Router,
         private taskService: TaskService,
         private authService: AuthService,
-        private notificationService: NotificationService,
-        private aiService: AiService
+        private notificationService: NotificationService
     ) { }
 
     ngOnInit(): void {
@@ -130,29 +112,6 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
             });
     }
 
-    improveWithAI(): void {
-        if (!this.task) return;
-
-        this.isImproving = true;
-        this.aiService.improveTaskDescription({
-            originalTitle: this.task.title,
-            originalDescription: this.task.description,
-            options: this.aiOptions
-        }).pipe(takeUntil(this.destroy$))
-            .subscribe({
-                next: (result) => {
-                    this.improvementResult = result;
-                    this.showAIImprovement = true;
-                    this.isImproving = false;
-                    this.notificationService.success('AI improvement generated');
-                },
-                error: () => {
-                    this.isImproving = false;
-                    this.notificationService.error('Failed to improve task description');
-                }
-            });
-    }
-
     // Ai Improvement
     openAiImprovement(): void {
         this.showAiImprovement = true;
@@ -183,41 +142,6 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
 
     closeAiImprovement(): void {
         this.showAiImprovement = false;
-    }
-
-
-
-
-    // Ai Improvement
-
-    applyAIImprovement(): void {
-        if (!this.task || !this.improvementResult) return;
-
-        this.taskService.updateTask(this.task.id, {
-            title: this.improvementResult.improvedTitle,
-            description: this.improvementResult.improvedDescription,
-            priority: this.task.priority,
-            dueDate: this.task.dueDate,
-            estimatedHours: this.task.estimatedHours,
-            actualHours: this.task.actualHours,
-            assignedToUserId: this.task.assignedToUserId
-        }).pipe(takeUntil(this.destroy$))
-            .subscribe({
-                next: () => {
-                    this.notificationService.success('Task updated with AI improvements');
-                    this.showAIImprovement = false;
-                    this.improvementResult = null;
-                    this.loadTask();
-                },
-                error: () => {
-                    this.notificationService.error('Failed to apply AI improvements');
-                }
-            });
-    }
-
-    dismissAIImprovement(): void {
-        this.showAIImprovement = false;
-        this.improvementResult = null;
     }
 
     getStatusBadgeClass(status: TaskStatus): string {

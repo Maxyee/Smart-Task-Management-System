@@ -1,0 +1,49 @@
+.ai-modal-root {
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1rem;
+}
+
+.ai-modal-backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(17, 24, 39, 0.55);
+	backdrop-filter: blur(2px);
+}
+
+.ai-modal-wrap {
+	position: relative;
+	width: 100%;
+	max-width: 56rem;
+	z-index: 1;
+}
+
+.ai-modal-panel {
+	width: 100%;
+	max-height: calc(100vh - 2rem);
+}
+
+.ai-modal-body {
+	max-height: calc(100vh - 10rem);
+}
+
+@media (max-width: 640px) {
+	.ai-modal-root {
+		padding: 0.5rem;
+		align-items: flex-start;
+	}
+
+	.ai-modal-panel {
+		margin-top: 0.5rem;
+		border-radius: 0.75rem;
+		max-height: calc(100vh - 1rem);
+	}
+
+	.ai-modal-body {
+		max-height: calc(100vh - 8rem);
+	}
+}

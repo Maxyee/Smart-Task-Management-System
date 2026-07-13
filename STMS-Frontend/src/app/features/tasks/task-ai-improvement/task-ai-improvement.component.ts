@@ -1,5 +1,5 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, OnChanges, SimpleChanges, HostListener, Renderer2, Inject } from '@angular/core';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AiService } from '../../../core/services/ai.service';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -13,7 +13,7 @@ import { Subject, takeUntil, finalize } from 'rxjs';
     templateUrl: './task-ai-improvement.component.html',
     styleUrls: ['./task-ai-improvement.component.css']
 })
-export class TaskAiImprovementComponent implements OnInit, OnDestroy {
+export class TaskAiImprovementComponent implements OnInit, OnChanges, OnDestroy {
     @Input() taskId: string = '';
     @Input() title: string = '';
     @Input() description: string = '';
@@ -49,10 +49,13 @@ export class TaskAiImprovementComponent implements OnInit, OnDestroy {
     showHistory = false;
 
     private destroy$ = new Subject<void>();
+    private bodyScrollLocked = false;
 
     constructor(
         private aiService: AiService,
-        private notificationService: NotificationService
+        private notificationService: NotificationService,
+        private renderer: Renderer2,
+        @Inject(DOCUMENT) private document: Document
     ) { }
 
     ngOnInit(): void {
@@ -68,8 +71,30 @@ export class TaskAiImprovementComponent implements OnInit, OnDestroy {
     }
 
     ngOnDestroy(): void {
+        this.unlockBodyScroll();
         this.destroy$.next();
         this.destroy$.complete();
+    }
+
+    ngOnChanges(changes: SimpleChanges): void {
+        if (changes['isOpen']) {
+            if (this.isOpen) {
+                this.activeStep = 'options';
+                this.showPreview = false;
+                this.showHistory = false;
+                this.improvementResult = null;
+                this.lockBodyScroll();
+            } else {
+                this.unlockBodyScroll();
+            }
+        }
+    }
+
+    @HostListener('document:keydown.escape')
+    onEscapePressed(): void {
+        if (this.isOpen) {
+            this.closePanel();
+        }
     }
 
     improveTask(): void {
@@ -129,10 +154,11 @@ export class TaskAiImprovementComponent implements OnInit, OnDestroy {
     }
 
     closePanel(): void {
-        this.isOpen = false;
+        this.unlockBodyScroll();
         this.showPreview = false;
         this.activeStep = 'options';
         this.improvementResult = null;
+        this.showHistory = false;
         this.close.emit();
     }
 
@@ -191,4 +217,22 @@ export class TaskAiImprovementComponent implements OnInit, OnDestroy {
     // Helper for template
     Math = Math;
     Object = Object;
+
+    private lockBodyScroll(): void {
+        if (this.bodyScrollLocked) {
+            return;
+        }
+
+        this.renderer.setStyle(this.document.body, 'overflow', 'hidden');
+        this.bodyScrollLocked = true;
+    }
+
+    private unlockBodyScroll(): void {
+        if (!this.bodyScrollLocked) {
+            return;
+        }
+
+        this.renderer.removeStyle(this.document.body, 'overflow');
+        this.bodyScrollLocked = false;
+    }
 }
