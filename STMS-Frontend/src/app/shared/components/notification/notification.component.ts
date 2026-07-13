@@ -41,7 +41,8 @@ export class NotificationComponent implements OnInit, OnDestroy {
   }
 
   getNotificationClasses(type: string): string {
-    const baseClasses = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md transform transition-all duration-500';
+    //const baseClasses = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md transform transition-all duration-500';
+    const baseClasses = 'top-4 right-4 p-4 rounded-lg shadow-lg max-w-md transform transition-all duration-500';
     const typeClasses = {
       success: 'bg-green-50 border-l-4 border-green-500 text-green-700',
       error: 'bg-red-50 border-l-4 border-red-500 text-red-700',
