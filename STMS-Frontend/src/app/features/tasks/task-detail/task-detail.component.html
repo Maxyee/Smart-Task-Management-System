@@ -56,6 +56,31 @@
         <p class="text-gray-600 whitespace-pre-wrap">{{ task.description || 'No description provided.' }}</p>
     </div>
 
+
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="text-sm font-medium text-gray-700">AI Improvement</h3>
+            <button (click)="openAiImprovement()"
+                class="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-md text-sm font-medium hover:from-purple-700 hover:to-indigo-700">
+                <span class="flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Improve with AI
+                </span>
+            </button>
+        </div>
+        <p class="text-sm text-gray-500">
+            Use AI to enhance your task description with better clarity, professionalism, and actionable items.
+        </p>
+    </div>
+
+    <!-- AI Improvement Modal -->
+    <app-task-ai-improvement *ngIf="showAiImprovement" [isOpen]="showAiImprovement" [taskId]="task.id"
+        [title]="task.title" [description]="task.description" [currentStatus]="getStatusText(task.status)"
+        (close)="closeAiImprovement()" (apply)="applyAiImprovement($event)"></app-task-ai-improvement>
+
     <!-- AI Improvement -->
     <div class="bg-white rounded-lg border border-gray-200 p-6">
         <div class="flex justify-between items-center mb-3">

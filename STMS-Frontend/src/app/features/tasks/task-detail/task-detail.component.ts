@@ -8,11 +8,13 @@ import { NotificationService } from '../../../core/services/notification.service
 import { AiService } from '../../../core/services/ai.service';
 import { Task, TaskStatus, TaskPriority } from '../../../core/models/task.model';
 import { Subject, takeUntil } from 'rxjs';
+import { TaskAiImprovementComponent } from '../task-ai-improvement/task-ai-improvement.component';
+import { TaskImprovementResponse } from '../../../core/models/ai.model';
 
 @Component({
     selector: 'app-task-detail',
     standalone: true,
-    imports: [CommonModule, RouterModule, FormsModule],
+    imports: [CommonModule, RouterModule, FormsModule, TaskAiImprovementComponent],
     templateUrl: './task-detail.component.html',
     styleUrls: ['./task-detail.component.css']
 })
@@ -25,6 +27,8 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
     // AI Improvement
     showAIImprovement = false;
     isImproving = false;
+    showAiImprovement = false;
+    aiImprovementResult: TaskImprovementResponse | null = null;
     improvementResult: any = null;
     aiOptions = {
         correctGrammar: true,
@@ -148,6 +152,43 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
                 }
             });
     }
+
+    // Ai Improvement
+    openAiImprovement(): void {
+        this.showAiImprovement = true;
+    }
+
+    applyAiImprovement(event: { title: string; description: string }): void {
+        if (!this.task) return;
+
+        this.taskService.updateTask(this.task.id, {
+            title: event.title,
+            description: event.description,
+            priority: this.task.priority,
+            dueDate: this.task.dueDate,
+            estimatedHours: this.task.estimatedHours,
+            actualHours: this.task.actualHours,
+            assignedToUserId: this.task.assignedToUserId
+        }).pipe(takeUntil(this.destroy$))
+            .subscribe({
+                next: () => {
+                    this.notificationService.success('Task updated with AI improvements');
+                    this.loadTask();
+                },
+                error: () => {
+                    this.notificationService.error('Failed to apply AI improvements');
+                }
+            });
+    }
+
+    closeAiImprovement(): void {
+        this.showAiImprovement = false;
+    }
+
+
+
+
+    // Ai Improvement
 
     applyAIImprovement(): void {
         if (!this.task || !this.improvementResult) return;

@@ -24,4 +24,14 @@ export class AiService {
   checkHealth(): Observable<boolean> {
     return this.apiService.get<boolean>('ai/health');
   }
+
+  // New: Bulk improvement
+  bulkImprove(taskIds: string[], options: any): Observable<any> {
+    return this.apiService.post<any>('ai/bulk-improve', { taskIds, options });
+  }
+
+  // New: Preview improvement without saving
+  previewImprovement(request: TaskImprovementRequest): Observable<TaskImprovementResponse> {
+    return this.apiService.post<TaskImprovementResponse>('ai/preview', request);
+  }
 }

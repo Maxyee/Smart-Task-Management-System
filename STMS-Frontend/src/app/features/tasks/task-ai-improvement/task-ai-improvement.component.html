@@ -1,0 +1,315 @@
+<div *ngIf="isOpen" class="fixed inset-0 z-50 overflow-y-auto" (click)="closePanel()">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <!-- Modal Panel -->
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
+            (click)="$event.stopPropagation()">
+
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <div>
+                            <h3 class="text-lg font-medium text-white">AI Task Improvement</h3>
+                            <p class="text-sm text-purple-200">Enhance your task description with AI</p>
+                        </div>
+                    </div>
+                    <button (click)="closePanel()" class="text-purple-200 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Body -->
+            <div class="px-6 py-4 max-h-[80vh] overflow-y-auto">
+                <!-- Step 1: Options -->
+                <div *ngIf="activeStep === 'options'" class="space-y-6">
+                    <!-- Current Task -->
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Current Task</h4>
+                        <p class="text-sm font-medium text-gray-900">{{ title || 'No title' }}</p>
+                        <p class="text-sm text-gray-600 mt-1">{{ description || 'No description' }}</p>
+                        <p class="text-xs text-gray-500 mt-2">Status: {{ currentStatus }}</p>
+                    </div>
+
+                    <!-- AI Options -->
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-700 mb-3">Improvement Options</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Grammar -->
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" [(ngModel)]="aiOptions.correctGrammar"
+                                    class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" />
+                                <span class="text-sm text-gray-700">Correct Grammar</span>
+                            </label>
+
+                            <!-- Clarity -->
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" [(ngModel)]="aiOptions.improveClarity"
+                                    class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" />
+                                <span class="text-sm text-gray-700">Improve Clarity</span>
+                            </label>
+
+                            <!-- Professional -->
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" [(ngModel)]="aiOptions.makeProfessional"
+                                    class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" />
+                                <span class="text-sm text-gray-700">Make Professional</span>
+                            </label>
+
+                            <!-- Expand -->
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" [(ngModel)]="aiOptions.expandDescription"
+                                    class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" />
+                                <span class="text-sm text-gray-700">Expand Description</span>
+                            </label>
+
+                            <!-- Actionable -->
+                            <label class="flex items-center space-x-2">
+                                <input type="checkbox" [(ngModel)]="aiOptions.makeActionable"
+                                    class="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" />
+                                <span class="text-sm text-gray-700">Make Actionable</span>
+                            </label>
+
+                            <!-- Max Length -->
+                            <div class="flex items-center space-x-2">
+                                <label class="text-sm text-gray-700 whitespace-nowrap">Max Length:</label>
+                                <input type="number" [(ngModel)]="aiOptions.maxLength"
+                                    class="w-20 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    min="100" max="2000" />
+                                <span class="text-xs text-gray-500">characters</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tone & Language -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Tone</label>
+                            <select [(ngModel)]="aiOptions.tone"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                <option *ngFor="let tone of toneOptions" [value]="tone">{{ tone }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Language</label>
+                            <select [(ngModel)]="aiOptions.language"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                <option *ngFor="let lang of languageOptions" [value]="lang">{{ lang }}</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- History -->
+                    <div *ngIf="improvementHistory.length > 0">
+                        <button (click)="showHistory = !showHistory"
+                            class="text-sm text-purple-600 hover:text-purple-700 font-medium">
+                            {{ showHistory ? 'Hide' : 'Show' }} History ({{ improvementHistory.length }})
+                        </button>
+
+                        <div *ngIf="showHistory" class="mt-2 space-y-2 max-h-40 overflow-y-auto">
+                            <div *ngFor="let item of improvementHistory; let i = index" (click)="loadHistoryItem(item)"
+                                class="p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer text-sm">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-700 truncate">{{ item.improvedTitle || 'Untitled' }}</span>
+                                    <span class="text-xs text-gray-400">#{{ i + 1 }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                        <button (click)="closePanel()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button (click)="improveTask()" [disabled]="!title && !description"
+                            class="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-md text-sm font-medium hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span class="flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                Improve with AI
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Improving -->
+                <div *ngIf="activeStep === 'improving'" class="py-12 text-center">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+                    <p class="mt-4 text-gray-600">AI is analyzing and improving your task description...</p>
+                    <p class="text-sm text-gray-400 mt-2">This may take a few seconds</p>
+                    <div class="mt-4 w-full max-w-md mx-auto bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full animate-pulse"
+                            style="width: 75%"></div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Preview -->
+                <div *ngIf="activeStep === 'preview' && improvementResult" class="space-y-6">
+                    <!-- Improvement Summary -->
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span class="text-sm font-medium text-green-800">Improvement Ready</span>
+                            </div>
+                            <span class="text-xs text-green-600">{{ getImprovementSummary() }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Improved Title -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-sm font-medium text-gray-700">Improved Title</label>
+                            <div class="flex space-x-2">
+                                <span class="text-xs text-gray-400">
+                                    {{ getCharacterCount(improvementResult.improvedTitle) }} chars
+                                </span>
+                                <button (click)="copyToClipboard(improvementResult.improvedTitle)"
+                                    class="text-xs text-purple-600 hover:text-purple-700">
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                            <p class="text-sm font-medium text-gray-900">{{ improvementResult.improvedTitle }}</p>
+                        </div>
+                        <div class="mt-1 flex items-center space-x-2">
+                            <span class="text-xs text-gray-400">Original: {{ title || 'No title' }}</span>
+                            <span class="text-xs text-gray-300">|</span>
+                            <span class="text-xs text-green-600">
+                                {{ getCharacterCount(improvementResult.improvedTitle) - getCharacterCount(title || '') >
+                                0 ? '+' : '' }}
+                                {{ getCharacterCount(improvementResult.improvedTitle) - getCharacterCount(title || '')
+                                }} chars
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Improved Description -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-sm font-medium text-gray-700">Improved Description</label>
+                            <div class="flex space-x-2">
+                                <span class="text-xs text-gray-400">
+                                    {{ getCharacterCount(improvementResult.improvedDescription) }} chars
+                                </span>
+                                <button (click)="copyToClipboard(improvementResult.improvedDescription)"
+                                    class="text-xs text-purple-600 hover:text-purple-700">
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 border border-gray-200 max-h-48 overflow-y-auto">
+                            <p class="text-sm text-gray-700 whitespace-pre-wrap">{{
+                                improvementResult.improvedDescription }}</p>
+                        </div>
+                        <div class="mt-1 flex items-center space-x-2">
+                            <span class="text-xs text-gray-400">Original: {{ getCharacterCount(description || '') }}
+                                chars</span>
+                            <span class="text-xs text-gray-300">|</span>
+                            <span class="text-xs"
+                                [class.text-green-600]="getCharacterCount(improvementResult.improvedDescription) > getCharacterCount(description || '')"
+                                [class.text-red-600]="getCharacterCount(improvementResult.improvedDescription) < getCharacterCount(description || '')">
+                                {{ getCharacterCount(improvementResult.improvedDescription) -
+                                getCharacterCount(description || '') > 0 ? '+' : '' }}
+                                {{ getCharacterCount(improvementResult.improvedDescription) -
+                                getCharacterCount(description || '') }} chars
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Summary -->
+                    <div *ngIf="improvementResult.summary" class="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                        <p class="text-xs font-medium text-purple-700">Summary</p>
+                        <p class="text-sm text-gray-700 mt-1">{{ improvementResult.summary }}</p>
+                    </div>
+
+                    <!-- Key Points -->
+                    <div *ngIf="improvementResult.keyPoints?.length">
+                        <p class="text-xs font-medium text-gray-700 mb-2">Key Points</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div *ngFor="let point of improvementResult.keyPoints" class="flex items-start space-x-2">
+                                <svg class="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span class="text-sm text-gray-700">{{ point }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Suggested Actions -->
+                    <div *ngIf="improvementResult.suggestedActions?.length">
+                        <p class="text-xs font-medium text-gray-700 mb-2">Suggested Actions</p>
+                        <div class="space-y-2">
+                            <div *ngFor="let action of improvementResult.suggestedActions"
+                                class="flex items-start space-x-2 bg-indigo-50 rounded-lg p-2">
+                                <span class="text-indigo-600 text-sm font-medium">•</span>
+                                <span class="text-sm text-gray-700">{{ action }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metadata -->
+                    <div *ngIf="improvementResult.metadata" class="text-xs text-gray-400 border-t border-gray-200 pt-3">
+                        <div class="flex flex-wrap gap-4">
+                            <span>Model: {{ improvementResult.metadata.model }}</span>
+                            <span>•</span>
+                            <span>Processing: {{ improvementResult.metadata.processingTimeSeconds?.toFixed(2) || 'N/A'
+                                }}s</span>
+                            <span>•</span>
+                            <span>Tokens: {{ improvementResult.metadata.tokensUsed || 'N/A' }}</span>
+                            <span>•</span>
+                            <span>Processed: {{ improvementResult.metadata.processedAt | date:'MMM d, y h:mm a'
+                                }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                        <button (click)="resetToOptions()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                            Back
+                        </button>
+                        <button (click)="closePanel()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button (click)="applyImprovement()"
+                            class="px-6 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-md text-sm font-medium hover:from-green-700 hover:to-green-800">
+                            <span class="flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7" />
+                                </svg>
+                                Apply Improvement
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

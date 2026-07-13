@@ -312,33 +312,52 @@ namespace SmartTaskManagement.Infrastructure.Services
             return sb.ToString();
         }
 
+
         private async Task<string> CallAIModelAsync(string prompt)
         {
+            string apiKey = "AQ.Ab8RN6ILISeXYKTqII76CCMUy4lDucJvpbA7ZY53lZevWn0SPQ"; 
+            string apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent";
+
             var payload = new
             {
-                model = _aiSettings.Model,
-                messages = new[]
+                contents = new[]
                 {
-                new { role = "user", content = prompt }
-            },
-                temperature = _aiSettings.DefaultTemperature,
-                max_tokens = _aiSettings.MaxTokens,
-                stream = false
+                    new
+                    {
+                        parts = new[]
+                        {
+                            new { text = prompt }
+                        }
+                    }
+                }
             };
 
             var jsonContent = JsonSerializer.Serialize(payload);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync("", content);
-            response.EnsureSuccessStatusCode();
+            // Add the Authorization header
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Add("X-Goog-Api-Key", apiKey);
+
+            // Send request
+            var response = await _httpClient.PostAsync(apiUrl, content);
+
+            // Handle Errors
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Google API Error {response.StatusCode}: {errorContent}");
+            }
 
             var responseContent = await response.Content.ReadAsStringAsync();
             var jsonResponse = JsonDocument.Parse(responseContent);
 
+            // Extract text
             return jsonResponse.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
+                .GetProperty("candidates")[0]
                 .GetProperty("content")
+                .GetProperty("parts")[0]
+                .GetProperty("text")
                 .GetString() ?? string.Empty;
         }
 
