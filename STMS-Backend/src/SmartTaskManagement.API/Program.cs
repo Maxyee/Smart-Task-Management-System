@@ -16,6 +16,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi;
 using FluentValidation;
 using SmartTaskManagement.Application.Validators;
+using SmartTaskManagement.Application.Interfaces.Repositories.Chat;
+using SmartTaskManagement.Infrastructure.Repositories.Chat;
 
 
 namespace SmartTaskManagement.API;
@@ -146,13 +148,26 @@ public class Program
         // Configure Password Hasher
         builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
-        // Register Repositories
+        //// Included Repositories 
+        
+        // User Repository
         builder.Services.AddScoped<IUserRepository, UserRepository>();
-        builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
-        builder.Services.AddScoped<ITaskRepository, TaskRepository>();
-        builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-        // Register Services
+        // Project Repository
+        builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
+
+        // Task Repository
+        builder.Services.AddScoped<ITaskRepository, TaskRepository>();
+
+        // Chat Repositories
+        builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
+        builder.Services.AddScoped<IMessageRepository, MessageRepository>();
+        builder.Services.AddScoped<IConversationParticipantRepository, ConversationParticipantRepository>();
+        builder.Services.AddScoped<IMessageAttachmentRepository, MessageAttachmentRepository>();
+
+        
+
+        // Included Services
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<IAuthService, AuthService>();
         builder.Services.AddScoped<IProjectService, ProjectService>();
@@ -160,6 +175,10 @@ public class Program
         builder.Services.AddScoped<IDashboardService, DashboardService>();
         builder.Services.AddScoped<IAiService, AiService>();
         builder.Services.AddScoped<IUserService, UserService>();
+
+
+        // Unit of Work Service
+        builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         // Configure CORS
         builder.Services.AddCors(options =>
