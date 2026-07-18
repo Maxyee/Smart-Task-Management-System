@@ -15,13 +15,16 @@ namespace SmartTaskManagement.Infrastructure.Repositories.Chat
         public async Task<Conversation?> GetConversationWithDetailsAsync(Guid conversationId)
         {
             return await _dbSet
+                .Where(c => c.Id == conversationId && !c.IsDeleted)
                 .Include(c => c.Participants)
                     .ThenInclude(p => p.User)
                 .Include(c => c.Messages)
                     .ThenInclude(m => m.Sender)
                 .Include(c => c.Messages)
                     .ThenInclude(m => m.Attachments)
-                .FirstOrDefaultAsync(c => c.Id == conversationId && !c.IsDeleted);
+                .Include(c => c.LastMessage)
+                    .ThenInclude(m => m != null ? m.Sender : null)
+                .FirstOrDefaultAsync();
         }
 
         public async Task<IEnumerable<Conversation>> GetUserConversationsAsync(Guid userId)

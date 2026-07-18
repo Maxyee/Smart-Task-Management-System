@@ -27,6 +27,7 @@ namespace SmartTaskManagement.Infrastructure.Services
         {
             try
             {
+                // Validate user exists
                 var user = await _unitOfWork.Users.GetByIdAsync(userId);
                 if (user == null)
                 {
@@ -65,14 +66,14 @@ namespace SmartTaskManagement.Infrastructure.Services
                         ? string.Join(", ", participantUsers.Select(u => u.Username))
                         : dto.Name ?? "Group Chat",
                     CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    UpdatedAt = DateTime.UtcNow,
+                    IsDeleted = false
                 };
 
-                // Add participants
-                var participants = new List<ConversationParticipant>();
+                await _unitOfWork.Conversations.AddAsync(conversation);
 
-                // Add creator
-                participants.Add(new ConversationParticipant
+                // CRITICAL: Add the creator as a participant FIRST
+                var creatorParticipant = new ConversationParticipant
                 {
                     Id = Guid.NewGuid(),
                     ConversationId = conversation.Id,
@@ -81,13 +82,19 @@ namespace SmartTaskManagement.Infrastructure.Services
                     JoinedAt = DateTime.UtcNow,
                     LastReadAt = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                });
+                    UpdatedAt = DateTime.UtcNow,
+                    IsDeleted = false
+                };
+
+                await _unitOfWork.ConversationParticipants.AddAsync(creatorParticipant);
 
                 // Add other participants
                 foreach (var participantId in dto.ParticipantIds)
                 {
-                    participants.Add(new ConversationParticipant
+                    // Skip if the participant is the creator (already added)
+                    if (participantId == userId) continue;
+
+                    var participant = new ConversationParticipant
                     {
                         Id = Guid.NewGuid(),
                         ConversationId = conversation.Id,
@@ -96,19 +103,30 @@ namespace SmartTaskManagement.Infrastructure.Services
                         JoinedAt = DateTime.UtcNow,
                         LastReadAt = DateTime.UtcNow,
                         CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    });
+                        UpdatedAt = DateTime.UtcNow,
+                        IsDeleted = false
+                    };
+
+                    await _unitOfWork.ConversationParticipants.AddAsync(participant);
                 }
 
-                await _unitOfWork.Conversations.AddAsync(conversation);
+                // Save all changes
                 await _unitOfWork.CompleteAsync();
 
-                var resultDto = await MapToConversationDto(conversation, userId);
+                // Get the complete conversation with all navigation properties
+                var createdConversation = await _unitOfWork.Conversations
+                    .GetConversationWithDetailsAsync(conversation.Id);
+
+                var resultDto = await MapToConversationDto(createdConversation!, userId);
+
+                _logger.LogInformation("Conversation {ConversationId} created by user {UserId} with {ParticipantCount} participants",
+                    conversation.Id, userId, dto.ParticipantIds.Count + 1);
+
                 return Response<ConversationDto>.SuccessResponse(resultDto, "Conversation created successfully");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating conversation");
+                _logger.LogError(ex, "Error creating conversation by user {UserId}", userId);
                 return Response<ConversationDto>.FailureResponse("An error occurred while creating the conversation", 500);
             }
         }
@@ -117,14 +135,18 @@ namespace SmartTaskManagement.Infrastructure.Services
         {
             try
             {
-                var conversation = await _unitOfWork.Conversations.GetConversationWithDetailsAsync(conversationId);
+                var conversation = await _unitOfWork.Conversations
+                    .GetConversationWithDetailsAsync(conversationId);
+
                 if (conversation == null || conversation.IsDeleted)
                 {
                     return Response<ConversationDto>.FailureResponse("Conversation not found", 404);
                 }
 
-                // Check if user is a participant
-                var isParticipant = await _unitOfWork.ConversationParticipants.IsParticipantAsync(conversationId, userId);
+                // Check if user is a participant - THIS IS CRITICAL
+                var isParticipant = await _unitOfWork.ConversationParticipants
+                    .IsParticipantAsync(conversationId, userId);
+
                 if (!isParticipant)
                 {
                     return Response<ConversationDto>.FailureResponse("You are not a participant in this conversation", 403);

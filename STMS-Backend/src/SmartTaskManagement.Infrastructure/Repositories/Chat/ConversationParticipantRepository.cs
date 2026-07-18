@@ -40,7 +40,8 @@ namespace SmartTaskManagement.Infrastructure.Repositories.Chat
             return await _dbSet
                 .AnyAsync(p => p.ConversationId == conversationId &&
                                p.UserId == userId &&
-                               p.LeftAt == null);
+                               p.LeftAt == null &&
+                               !p.IsDeleted);
         }
 
         public async Task<IEnumerable<ConversationParticipant>> GetConversationAdminsAsync(Guid conversationId)
