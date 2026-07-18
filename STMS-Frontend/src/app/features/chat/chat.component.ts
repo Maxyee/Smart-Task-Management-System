@@ -1,11 +1,11 @@
 // src/app/features/chat/chat.component.ts
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatService } from '../../core/services/chat.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
-import { Conversation, Message, MessageType, ConversationType, CreateConversationRequest } from '../../core/models/chat.model';
+import { Conversation, Message, MessageType, ConversationType, CreateConversationRequest, SendMessageRequest } from '../../core/models/chat.model';
 import { User } from '../../core/models/user.model';
 import { Subject, takeUntil, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
@@ -36,6 +36,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     isChatOpen = false;
     isMobileView = false;
     showConversationList = true;
+    isConnectionReady = false;
 
     // User Search State
     isSearchingUsers = false;
@@ -44,8 +45,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     isSearching = false;
     isCreatingConversation = false;
 
-    isConnectionReady = false;
-
     private destroy$ = new Subject<void>();
     private typingTimeout: any;
     private searchSubject = new Subject<string>();
@@ -53,7 +52,8 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     constructor(
         private chatService: ChatService,
         private authService: AuthService,
-        private notificationService: NotificationService
+        private notificationService: NotificationService,
+        private cdr: ChangeDetectorRef // Add this for change detection
     ) {
         // Setup user search with debounce
         this.searchSubject.pipe(
@@ -71,21 +71,21 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             takeUntil(this.destroy$)
         ).subscribe({
             next: (users) => {
-                // Filter out current user
                 const currentUser = this.authService.getCurrentUser();
                 this.searchResults = users.filter(u => u.id !== currentUser?.id);
                 this.isSearching = false;
+                this.cdr.detectChanges();
             },
             error: (error) => {
                 console.error('Error searching users:', error);
                 this.isSearching = false;
                 this.notificationService.error('Failed to search users');
+                this.cdr.detectChanges();
             }
         });
     }
 
     ngOnInit(): void {
-
         // Subscribe to connection state
         this.chatService.connectionState$
             .pipe(takeUntil(this.destroy$))
@@ -94,6 +94,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
                 if (this.isConnectionReady && this.isChatOpen) {
                     this.loadConversations();
                 }
+                this.cdr.detectChanges();
             });
 
         // Load conversations
@@ -102,6 +103,19 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             .subscribe(conversations => {
                 this.conversations = conversations;
                 this.updateUnreadBadge();
+                
+                // If there's a selected conversation, update it from the list
+                if (this.selectedConversation) {
+                    const updated = conversations.find(c => c.id === this.selectedConversation!.id);
+                    if (updated) {
+                        this.selectedConversation = updated;
+                    } else {
+                        // If selected conversation is no longer in the list, clear it
+                        this.selectedConversation = null;
+                        this.showConversationList = true;
+                    }
+                }
+                this.cdr.detectChanges();
             });
 
         // Load messages
@@ -112,6 +126,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
                     this.messages = messages[this.selectedConversation.id] || [];
                     this.scrollToBottom();
                 }
+                this.cdr.detectChanges();
             });
 
         // Typing indicators
@@ -121,6 +136,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
                 if (this.selectedConversation) {
                     this.typingUsers = typingMap[this.selectedConversation.id] || [];
                 }
+                this.cdr.detectChanges();
             });
 
         // Online users
@@ -128,6 +144,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             .pipe(takeUntil(this.destroy$))
             .subscribe(users => {
                 this.onlineUsers = users;
+                this.cdr.detectChanges();
             });
 
         // Unread count
@@ -135,6 +152,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             .pipe(takeUntil(this.destroy$))
             .subscribe(count => {
                 this.unreadCount = count;
+                this.cdr.detectChanges();
             });
 
         // Check mobile view
@@ -166,71 +184,121 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.chatService.loadConversations();
         setTimeout(() => {
             this.isLoading = false;
+            this.cdr.detectChanges();
         }, 1000);
     }
 
     /**
      * Select a conversation and load its messages
      */
-    selectConversation(conversation: Conversation): void {
+    async selectConversation(conversation: Conversation): Promise<void> {
+        if (!conversation) {
+            console.warn('No conversation selected');
+            return;
+        }
+
+        console.log('Selecting conversation:', conversation.id, conversation.name);
+        
+        // Set the selected conversation
         this.selectedConversation = conversation;
         this.messages = [];
         this.isLoading = true;
+        
+        // IMPORTANT: Hide the conversation list to show the chat window
+        this.showConversationList = false;
+        
+        // Force change detection
+        this.cdr.detectChanges();
 
-        // Join conversation
-        this.chatService.joinConversation(conversation.id);
+        // Check if conversation exists in our list
+        const existingConv = this.conversations.find(c => c.id === conversation.id);
+        if (!existingConv) {
+            // If not in list, add it
+            this.conversations = [...this.conversations, conversation];
+            this.cdr.detectChanges();
+        }
+
+        // Join conversation via SignalR
+        if (this.isConnectionReady) {
+            try {
+                await this.chatService.joinConversation(conversation.id);
+                console.log('Joined conversation:', conversation.id);
+            } catch (error) {
+                console.error('Failed to join conversation:', error);
+            }
+        }
 
         // Load messages
         this.chatService.getMessages(conversation.id).subscribe({
             next: (messages) => {
-                this.messages = messages;
+                this.messages = messages || [];
                 this.isLoading = false;
                 this.scrollToBottom();
+                console.log('Loaded messages:', messages.length);
 
-                // Mark as read
-                if (messages.length > 0) {
+                // Mark as read if there are messages
+                if (messages && messages.length > 0) {
                     this.chatService.markAsRead(conversation.id, messages[messages.length - 1].id);
                 }
 
-                // On mobile, hide conversation list
-                if (this.isMobileView) {
-                    this.showConversationList = false;
-                }
+                this.cdr.detectChanges();
             },
             error: (error) => {
-                this.isLoading = false;
-                this.notificationService.error('Failed to load messages');
                 console.error('Error loading messages:', error);
+                this.isLoading = false;
+                this.messages = [];
+                this.cdr.detectChanges();
+                // Don't show error for new conversations with no messages
+                if (error.message?.includes('404')) {
+                    console.log('New conversation - no messages yet');
+                } else {
+                    this.notificationService.error('Failed to load messages');
+                }
             }
         });
 
-        // Focus input
+        // Focus input after a delay
         setTimeout(() => {
-            this.messageInput?.nativeElement?.focus();
-        }, 100);
+            if (this.messageInput?.nativeElement) {
+                this.messageInput.nativeElement.focus();
+            }
+            this.cdr.detectChanges();
+        }, 500);
     }
 
     /**
      * Send a new message
      */
-    sendMessage(): void {
-        if (!this.newMessage.trim() || !this.selectedConversation) return;
+    async sendMessage(): Promise<void> {
+        if (!this.newMessage.trim() || !this.selectedConversation) {
+            console.warn('Cannot send message: No content or no conversation selected');
+            return;
+        }
 
-        const message: any = {
+        const message: SendMessageRequest = {
             conversationId: this.selectedConversation.id,
             content: this.newMessage.trim(),
             type: MessageType.Text
         };
 
-        this.chatService.sendMessage(message);
-        this.newMessage = '';
-        this.isTyping = false;
+        console.log('Sending message:', message);
 
-        // Clear typing indicator
-        if (this.typingTimeout) {
-            clearTimeout(this.typingTimeout);
+        try {
+            await this.chatService.sendMessage(message);
+            this.newMessage = '';
+            this.isTyping = false;
+
+            // Clear typing indicator
+            if (this.typingTimeout) {
+                clearTimeout(this.typingTimeout);
+            }
+            await this.chatService.sendTypingIndicator(this.selectedConversation.id, false);
+            
+            this.cdr.detectChanges();
+        } catch (error) {
+            console.error('Failed to send message:', error);
+            this.notificationService.error('Failed to send message');
         }
-        this.chatService.sendTypingIndicator(this.selectedConversation.id, false);
     }
 
     /**
@@ -255,6 +323,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             if (this.selectedConversation) {
                 this.chatService.sendTypingIndicator(this.selectedConversation.id, false);
             }
+            this.cdr.detectChanges();
         }, 2000);
     }
 
@@ -288,18 +357,22 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     toggleChat(): void {
         this.isChatOpen = !this.isChatOpen;
         if (this.isChatOpen) {
+            // Reset to show conversation list
+            this.showConversationList = true;
+            this.selectedConversation = null;
+            this.messages = [];
+            
             // Check if connection is ready before loading
             if (this.isConnectionReady) {
                 this.loadConversations();
             } else {
-                // Wait for connection
-                this.waitForConnection().then(() => {
+                setTimeout(() => {
                     this.loadConversations();
-                });
+                }, 1000);
             }
         }
+        this.cdr.detectChanges();
     }
-
 
     /**
      * Toggle user search mode
@@ -311,11 +384,11 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.isSearching = false;
 
         if (this.isSearchingUsers) {
-            // Focus on search input after render
             setTimeout(() => {
                 this.userSearchInput?.nativeElement?.focus();
             }, 100);
         }
+        this.cdr.detectChanges();
     }
 
     /**
@@ -326,6 +399,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.userSearchTerm = '';
         this.searchResults = [];
         this.isSearching = false;
+        this.cdr.detectChanges();
     }
 
     /**
@@ -341,7 +415,27 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
      * Start a direct conversation with a user
      */
     async startDirectConversation(userId: string): Promise<void> {
+        if (this.isCreatingConversation) return;
+        
         this.isCreatingConversation = true;
+        console.log('Starting conversation with user:', userId);
+
+        // First, check if a conversation already exists with this user
+        const existingConversation = this.conversations.find(c => 
+            c.type === ConversationType.Direct && 
+            c.participants.some(p => p.userId === userId)
+        );
+
+        if (existingConversation) {
+            console.log('Existing conversation found:', existingConversation.id);
+            this.isCreatingConversation = false;
+            this.isSearchingUsers = false;
+            this.userSearchTerm = '';
+            this.searchResults = [];
+            await this.selectConversation(existingConversation);
+            this.cdr.detectChanges();
+            return;
+        }
 
         const request: CreateConversationRequest = {
             type: ConversationType.Direct,
@@ -349,49 +443,43 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             participantIds: [userId]
         };
 
+        console.log('Creating new conversation:', request);
+
         this.chatService.createConversation(request).subscribe({
             next: async (conversation) => {
+                console.log('Conversation created:', conversation);
                 this.notificationService.success('Conversation started successfully');
                 this.isCreatingConversation = false;
                 this.isSearchingUsers = false;
                 this.userSearchTerm = '';
                 this.searchResults = [];
-
-                // Wait for connection before loading conversations
-                await this.waitForConnection();
-                this.loadConversations();
-
+                
+                // Add to conversations list
+                this.conversations = [...this.conversations, conversation];
+                this.cdr.detectChanges();
+                
                 // Select the new conversation
-                setTimeout(() => {
-                    this.selectConversation(conversation);
-                }, 500);
+                setTimeout(async () => {
+                    await this.selectConversation(conversation);
+                    this.cdr.detectChanges();
+                }, 300);
             },
             error: (error) => {
                 console.error('Error creating conversation:', error);
                 this.notificationService.error('Failed to start conversation');
                 this.isCreatingConversation = false;
+                this.cdr.detectChanges();
             }
         });
     }
 
-    private async waitForConnection(): Promise<void> {
-        // Wait for connection to be ready
-        return new Promise((resolve) => {
-            const checkInterval = setInterval(() => {
-                if (this.isConnectionReady) {
-                    clearInterval(checkInterval);
-                    resolve();
-                }
-            }, 200);
-
-            // Timeout after 10 seconds
-            setTimeout(() => {
-                clearInterval(checkInterval);
-                resolve();
-            }, 10000);
-        });
+    /**
+     * Handle conversation click from the list
+     */
+    onConversationClick(conversation: Conversation): void {
+        console.log('Conversation clicked:', conversation.id, conversation.name);
+        this.selectConversation(conversation);
     }
-
 
     /**
      * Check if the view is mobile
@@ -401,6 +489,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         if (!this.isMobileView) {
             this.showConversationList = true;
         }
+        this.cdr.detectChanges();
     }
 
     /**
@@ -481,6 +570,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             this.selectedConversation = null;
             this.messages = [];
         }
+        this.cdr.detectChanges();
     }
 
     // Helper for template

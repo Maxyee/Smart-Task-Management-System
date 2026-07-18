@@ -138,7 +138,7 @@
                 <p class="text-xs text-gray-400 mt-1">Click the + button to start a new conversation</p>
             </div>
 
-            <div *ngFor="let conversation of conversations" (click)="selectConversation(conversation)"
+            <div *ngFor="let conversation of conversations" (click)="onConversationClick(conversation)"
                 class="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors"
                 [class.bg-indigo-50]="selectedConversation?.id === conversation.id">
                 <div class="relative">
