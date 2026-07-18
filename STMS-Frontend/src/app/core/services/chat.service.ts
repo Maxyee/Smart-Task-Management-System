@@ -13,6 +13,7 @@ import {
     ConversationType,
     MessageType
 } from '../models/chat.model';
+import { User } from '../models/user.model';
 
 @Injectable({
     providedIn: 'root'
@@ -105,18 +106,44 @@ export class ChatService implements OnDestroy {
         this.hubConnection.on('ConversationUpdated', (conversationId: string) => {
             this.loadConversations();
         });
+
+        // New conversation created
+        this.hubConnection.on('NewConversation', (conversation: Conversation) => {
+            this.loadConversations();
+        });
+
+        // Conversations loaded
+        this.hubConnection.on('ConversationsLoaded', (conversations: Conversation[]) => {
+            this.conversationsSubject.next(conversations);
+            this.updateUnreadCount(conversations);
+        });
+
+        // Messages loaded
+        this.hubConnection.on('MessagesLoaded', (conversationId: string, messages: Message[]) => {
+            const currentMessages = this.messagesSubject.value;
+            currentMessages[conversationId] = messages;
+            this.messagesSubject.next(currentMessages);
+        });
+
+        // Error handling
+        this.hubConnection.on('Error', (error: string) => {
+            console.error('SignalR error:', error);
+        });
+
+        // Online users list
+        this.hubConnection.on('OnlineUsers', (users: string[]) => {
+            this.onlineUsersSubject.next(users);
+        });
     }
 
     // API Methods
     loadConversations(): void {
-        this.apiService.get<Conversation[]>('chat/conversations')
-            .subscribe({
-                next: (conversations) => {
-                    this.conversationsSubject.next(conversations);
-                    this.updateUnreadCount(conversations);
-                },
-                error: (error) => console.error('Failed to load conversations:', error)
-            });
+        this.hubConnection.invoke('GetConversations')
+            .catch(err => console.error('Failed to load conversations:', err));
+    }
+
+    getConversations(): Observable<Conversation[]> {
+        return this.apiService.get<Conversation[]>('chat/conversations');
     }
 
     createConversation(request: CreateConversationRequest): Observable<Conversation> {
@@ -165,6 +192,49 @@ export class ChatService implements OnDestroy {
             .catch(err => console.error('Failed to edit message:', err));
     }
 
+    /**
+     * Search for users to start a new conversation
+     */
+    searchUsers(searchTerm: string): Observable<User[]> {
+        return this.apiService.get<User[]>('users/search', { searchTerm });
+    }
+
+    /**
+     * Get online users
+     */
+    getOnlineUsers(): void {
+        this.hubConnection.invoke('GetOnlineUsers')
+            .catch(err => console.error('Failed to get online users:', err));
+    }
+
+    /**
+     * Get user presence
+     */
+    getUserPresence(userId: string): Observable<UserPresence> {
+        return this.apiService.get<UserPresence>(`chat/users/${userId}/presence`);
+    }
+
+    /**
+     * Add participant to conversation
+     */
+    addParticipant(conversationId: string, userId: string): Observable<void> {
+        return this.apiService.post<void>(`chat/conversations/${conversationId}/participants`, { userId });
+    }
+
+    /**
+     * Remove participant from conversation
+     */
+    removeParticipant(conversationId: string, userId: string): Observable<void> {
+        return this.apiService.delete<void>(`chat/conversations/${conversationId}/participants/${userId}`);
+    }
+
+    /**
+     * Leave conversation
+     */
+    leaveConversationApi(conversationId: string): Observable<void> {
+        return this.apiService.post<void>(`chat/conversations/${conversationId}/leave`, {});
+    }
+
     // Event Handlers
     private handleNewMessage(message: Message): void {
         // Update messages
@@ -190,8 +260,11 @@ export class ChatService implements OnDestroy {
     }
 
     private handleTypingIndicator(userId: string, isTyping: boolean): void {
-        // This would need conversationId from the event
-        // For now, we'll implement it differently
+        // We need to know which conversation the user is typing in
+        // This is a simplified version - in production, you'd need to track this
+        const currentTyping = this.typingUsersSubject.value;
+        // For now, we'll just log it
+        console.log(`User ${userId} typing: ${isTyping}`);
     }
 
     private handleMessagesRead(conversationId: string, userId: string): void {
