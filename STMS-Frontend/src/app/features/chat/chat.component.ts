@@ -1,11 +1,13 @@
+// src/app/features/chat/chat.component.ts
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatService } from '../../core/services/chat.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
-import { Conversation, Message, MessageType, ConversationType } from '../../core/models/chat.model';
-import { Subject, takeUntil, debounceTime, distinctUntilChanged } from 'rxjs';
+import { Conversation, Message, MessageType, ConversationType, CreateConversationRequest } from '../../core/models/chat.model';
+import { User } from '../../core/models/user.model';
+import { Subject, takeUntil, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 
 @Component({
     selector: 'app-chat',
@@ -17,6 +19,7 @@ import { Subject, takeUntil, debounceTime, distinctUntilChanged } from 'rxjs';
 export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     @ViewChild('messageContainer') messageContainer!: ElementRef;
     @ViewChild('messageInput') messageInput!: ElementRef;
+    @ViewChild('userSearchInput') userSearchInput!: ElementRef;
 
     conversations: Conversation[] = [];
     selectedConversation: Conversation | null = null;
@@ -33,14 +36,50 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     isMobileView = false;
     showConversationList = true;
 
+    // User Search State
+    isSearchingUsers = false;
+    userSearchTerm = '';
+    searchResults: User[] = [];
+    isSearching = false;
+    isCreatingConversation = false;
+
     private destroy$ = new Subject<void>();
     private typingTimeout: any;
+    private searchSubject = new Subject<string>();
 
     constructor(
         private chatService: ChatService,
         private authService: AuthService,
         private notificationService: NotificationService
-    ) { }
+    ) {
+        // Setup user search with debounce
+        this.searchSubject.pipe(
+            debounceTime(300),
+            distinctUntilChanged(),
+            switchMap(searchTerm => {
+                if (searchTerm.length >= 2) {
+                    this.isSearching = true;
+                    return this.chatService.searchUsers(searchTerm);
+                }
+                this.searchResults = [];
+                this.isSearching = false;
+                return [];
+            }),
+            takeUntil(this.destroy$)
+        ).subscribe({
+            next: (users) => {
+                // Filter out current user
+                const currentUser = this.authService.getCurrentUser();
+                this.searchResults = users.filter(u => u.id !== currentUser?.id);
+                this.isSearching = false;
+            },
+            error: (error) => {
+                console.error('Error searching users:', error);
+                this.isSearching = false;
+                this.notificationService.error('Failed to search users');
+            }
+        });
+    }
 
     ngOnInit(): void {
         // Load conversations
@@ -88,7 +127,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.checkMobileView();
         window.addEventListener('resize', () => this.checkMobileView());
 
-        // If chat is open by default, load conversations
         if (this.isChatOpen) {
             this.loadConversations();
         }
@@ -112,7 +150,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     loadConversations(): void {
         this.isLoading = true;
         this.chatService.loadConversations();
-        // The actual data will come through the conversations$ subscription
         setTimeout(() => {
             this.isLoading = false;
         }, 1000);
@@ -242,6 +279,76 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
 
     /**
+     * Toggle user search mode
+     */
+    toggleUserSearch(): void {
+        this.isSearchingUsers = !this.isSearchingUsers;
+        this.userSearchTerm = '';
+        this.searchResults = [];
+        this.isSearching = false;
+
+        if (this.isSearchingUsers) {
+            // Focus on search input after render
+            setTimeout(() => {
+                this.userSearchInput?.nativeElement?.focus();
+            }, 100);
+        }
+    }
+
+    /**
+     * Cancel user search
+     */
+    cancelUserSearch(): void {
+        this.isSearchingUsers = false;
+        this.userSearchTerm = '';
+        this.searchResults = [];
+        this.isSearching = false;
+    }
+
+    /**
+     * Search for users
+     */
+    searchUsers(event: Event): void {
+        const value = (event.target as HTMLInputElement).value;
+        this.userSearchTerm = value;
+        this.searchSubject.next(value);
+    }
+
+    /**
+     * Start a direct conversation with a user
+     */
+    startDirectConversation(userId: string): void {
+        this.isCreatingConversation = true;
+
+        const request: CreateConversationRequest = {
+            type: ConversationType.Direct,
+            name: undefined,
+            participantIds: [userId]
+        };
+
+        this.chatService.createConversation(request).subscribe({
+            next: (conversation) => {
+                this.notificationService.success('Conversation started successfully');
+                this.isCreatingConversation = false;
+                this.isSearchingUsers = false;
+                this.userSearchTerm = '';
+                this.searchResults = [];
+                this.loadConversations();
+
+                // Select the new conversation
+                setTimeout(() => {
+                    this.selectConversation(conversation);
+                }, 500);
+            },
+            error: (error) => {
+                console.error('Error creating conversation:', error);
+                this.notificationService.error('Failed to start conversation');
+                this.isCreatingConversation = false;
+            }
+        });
+    }
+
+    /**
      * Check if the view is mobile
      */
     private checkMobileView(): void {
@@ -256,11 +363,9 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
      */
     private updateUnreadBadge(): void {
         const totalUnread = this.conversations.reduce((sum, conv) => sum + conv.unreadCount, 0);
-        // Update title or badge
         document.title = totalUnread > 0
             ? `(${totalUnread}) Smart Task Management`
             : 'Smart Task Management';
-
         this.unreadCount = totalUnread;
     }
 
@@ -331,46 +436,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             this.selectedConversation = null;
             this.messages = [];
         }
-    }
-
-    /**
-     * Create a new conversation
-     */
-    createConversation(userIds: string[]): void {
-        const request = {
-            type: userIds.length === 1 ? ConversationType.Direct : ConversationType.Group,
-            name: userIds.length === 1 ? undefined : 'New Group Chat',
-            participantIds: userIds
-        };
-
-        this.chatService.createConversation(request).subscribe({
-            next: (conversation) => {
-                this.notificationService.success('Conversation created successfully');
-                this.loadConversations();
-                this.selectConversation(conversation);
-            },
-            error: (error) => {
-                this.notificationService.error('Failed to create conversation');
-                console.error('Error creating conversation:', error);
-            }
-        });
-    }
-
-    /**
-     * Search for users to start a conversation
-     */
-    searchUsers(searchTerm: string): void {
-        // This would call a user service to search for users
-        // Implementation depends on your user service
-        this.chatService.searchUsers(searchTerm).subscribe({
-            next: (users) => {
-                // Handle search results
-                console.log('Search results:', users);
-            },
-            error: (error) => {
-                console.error('Error searching users:', error);
-            }
-        });
     }
 
     // Helper for template

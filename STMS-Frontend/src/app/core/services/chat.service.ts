@@ -39,7 +39,7 @@ export class ChatService implements OnDestroy {
         private http: HttpClient
     ) {
         this.hubConnection = new signalR.HubConnectionBuilder()
-            .withUrl('https://localhost:5001/chathub', {
+            .withUrl('http://localhost:5027/chathub', {
                 accessTokenFactory: () => localStorage.getItem('access_token') || ''
             })
             .withAutomaticReconnect()
