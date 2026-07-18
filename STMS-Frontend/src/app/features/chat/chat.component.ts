@@ -8,6 +8,7 @@ import { NotificationService } from '../../core/services/notification.service';
 import { Conversation, Message, MessageType, ConversationType, CreateConversationRequest } from '../../core/models/chat.model';
 import { User } from '../../core/models/user.model';
 import { Subject, takeUntil, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
+import * as signalR from '@microsoft/signalr';
 
 @Component({
     selector: 'app-chat',
@@ -42,6 +43,8 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     searchResults: User[] = [];
     isSearching = false;
     isCreatingConversation = false;
+
+    isConnectionReady = false;
 
     private destroy$ = new Subject<void>();
     private typingTimeout: any;
@@ -82,6 +85,17 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
 
     ngOnInit(): void {
+
+        // Subscribe to connection state
+        this.chatService.connectionState$
+            .pipe(takeUntil(this.destroy$))
+            .subscribe(state => {
+                this.isConnectionReady = state === signalR.HubConnectionState.Connected;
+                if (this.isConnectionReady && this.isChatOpen) {
+                    this.loadConversations();
+                }
+            });
+
         // Load conversations
         this.chatService.conversations$
             .pipe(takeUntil(this.destroy$))
@@ -274,9 +288,18 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     toggleChat(): void {
         this.isChatOpen = !this.isChatOpen;
         if (this.isChatOpen) {
-            this.loadConversations();
+            // Check if connection is ready before loading
+            if (this.isConnectionReady) {
+                this.loadConversations();
+            } else {
+                // Wait for connection
+                this.waitForConnection().then(() => {
+                    this.loadConversations();
+                });
+            }
         }
     }
+
 
     /**
      * Toggle user search mode
@@ -317,7 +340,7 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     /**
      * Start a direct conversation with a user
      */
-    startDirectConversation(userId: string): void {
+    async startDirectConversation(userId: string): Promise<void> {
         this.isCreatingConversation = true;
 
         const request: CreateConversationRequest = {
@@ -327,12 +350,15 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         };
 
         this.chatService.createConversation(request).subscribe({
-            next: (conversation) => {
+            next: async (conversation) => {
                 this.notificationService.success('Conversation started successfully');
                 this.isCreatingConversation = false;
                 this.isSearchingUsers = false;
                 this.userSearchTerm = '';
                 this.searchResults = [];
+
+                // Wait for connection before loading conversations
+                await this.waitForConnection();
                 this.loadConversations();
 
                 // Select the new conversation
@@ -347,6 +373,25 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
             }
         });
     }
+
+    private async waitForConnection(): Promise<void> {
+        // Wait for connection to be ready
+        return new Promise((resolve) => {
+            const checkInterval = setInterval(() => {
+                if (this.isConnectionReady) {
+                    clearInterval(checkInterval);
+                    resolve();
+                }
+            }, 200);
+
+            // Timeout after 10 seconds
+            setTimeout(() => {
+                clearInterval(checkInterval);
+                resolve();
+            }, 10000);
+        });
+    }
+
 
     /**
      * Check if the view is mobile

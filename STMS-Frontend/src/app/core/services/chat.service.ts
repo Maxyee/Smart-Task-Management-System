@@ -1,3 +1,4 @@
+// src/app/core/services/chat.service.ts
 import { Injectable, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable, Subject } from 'rxjs';
@@ -20,6 +21,8 @@ import { User } from '../models/user.model';
 })
 export class ChatService implements OnDestroy {
     private hubConnection: signalR.HubConnection;
+    private connectionState = new BehaviorSubject<signalR.HubConnectionState>(signalR.HubConnectionState.Disconnected);
+    public connectionState$ = this.connectionState.asObservable();
 
     // Subjects for real-time updates
     private conversationsSubject = new BehaviorSubject<Conversation[]>([]);
@@ -42,8 +45,32 @@ export class ChatService implements OnDestroy {
             .withUrl('http://localhost:5027/chathub', {
                 accessTokenFactory: () => localStorage.getItem('access_token') || ''
             })
-            .withAutomaticReconnect()
+            .withAutomaticReconnect({
+                nextRetryDelayInMilliseconds: retryContext => {
+                    // Exponential backoff: 2s, 4s, 8s, 16s, 32s, then stay at 32s
+                    const delay = Math.min(32000, Math.pow(2, retryContext.previousRetryCount + 1) * 1000);
+                    return delay;
+                }
+            })
             .build();
+
+        // Track connection state
+        this.hubConnection.onreconnecting(() => {
+            this.connectionState.next(signalR.HubConnectionState.Reconnecting);
+            console.log('SignalR reconnecting...');
+        });
+
+        this.hubConnection.onreconnected(() => {
+            this.connectionState.next(signalR.HubConnectionState.Connected);
+            console.log('SignalR reconnected');
+            // Reload conversations after reconnection
+            this.loadConversations();
+        });
+
+        this.hubConnection.onclose(() => {
+            this.connectionState.next(signalR.HubConnectionState.Disconnected);
+            console.log('SignalR disconnected');
+        });
 
         this.startConnection();
         this.registerHubEvents();
@@ -54,19 +81,29 @@ export class ChatService implements OnDestroy {
     }
 
     private startConnection(): void {
+        this.connectionState.next(signalR.HubConnectionState.Connecting);
+        
         this.hubConnection
             .start()
             .then(() => {
+                this.connectionState.next(signalR.HubConnectionState.Connected);
                 console.log('SignalR connection established');
-                this.loadConversations();
+                // Load conversations after connection is established
+                setTimeout(() => {
+                    this.loadConversations();
+                }, 500);
             })
             .catch(err => {
+                this.connectionState.next(signalR.HubConnectionState.Disconnected);
                 console.error('SignalR connection failed:', err);
                 // Retry after 5 seconds
                 setTimeout(() => this.startConnection(), 5000);
             });
     }
 
+    /**
+     * Register all SignalR hub events
+     */
     private registerHubEvents(): void {
         // Receive new message
         this.hubConnection.on('ReceiveMessage', (message: Message) => {
@@ -136,10 +173,65 @@ export class ChatService implements OnDestroy {
         });
     }
 
+    /**
+     * Check if the connection is ready before invoking
+     */
+    private isConnectionReady(): boolean {
+        return this.hubConnection.state === signalR.HubConnectionState.Connected;
+    }
+
+    /**
+     * Wait for connection to be ready
+     */
+    private async waitForConnection(timeoutMs: number = 5000): Promise<boolean> {
+        if (this.isConnectionReady()) {
+            return true;
+        }
+
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            const checkInterval = setInterval(() => {
+                if (this.isConnectionReady()) {
+                    clearInterval(checkInterval);
+                    resolve(true);
+                } else if (Date.now() - startTime > timeoutMs) {
+                    clearInterval(checkInterval);
+                    resolve(false);
+                }
+            }, 200);
+        });
+    }
+
     // API Methods
-    loadConversations(): void {
+    async loadConversations(): Promise<void> {
+        // Wait for connection to be ready
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.warn('SignalR connection not ready, falling back to HTTP');
+            // Fallback to HTTP
+            this.getConversations().subscribe({
+                next: (conversations) => {
+                    this.conversationsSubject.next(conversations);
+                    this.updateUnreadCount(conversations);
+                },
+                error: (err) => console.error('Failed to load conversations via HTTP:', err)
+            });
+            return;
+        }
+
         this.hubConnection.invoke('GetConversations')
-            .catch(err => console.error('Failed to load conversations:', err));
+            .catch(err => {
+                console.error('Failed to load conversations via SignalR:', err);
+                // Fallback to HTTP
+                this.getConversations().subscribe({
+                    next: (conversations) => {
+                        this.conversationsSubject.next(conversations);
+                        this.updateUnreadCount(conversations);
+                    },
+                    error: (err) => console.error('Failed to load conversations via HTTP:', err)
+                });
+            });
     }
 
     getConversations(): Observable<Conversation[]> {
@@ -157,37 +249,86 @@ export class ChatService implements OnDestroy {
         });
     }
 
-    sendMessage(request: SendMessageRequest): void {
+    async sendMessage(request: SendMessageRequest): Promise<void> {
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.error('SignalR connection not ready, cannot send message');
+            throw new Error('Connection not ready');
+        }
+
         this.hubConnection.invoke('SendMessage', request)
             .catch(err => console.error('Failed to send message:', err));
     }
 
-    joinConversation(conversationId: string): void {
+    async joinConversation(conversationId: string): Promise<void> {
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.warn('SignalR connection not ready, cannot join conversation');
+            return;
+        }
+
         this.hubConnection.invoke('JoinConversation', conversationId)
             .catch(err => console.error('Failed to join conversation:', err));
     }
 
-    leaveConversation(conversationId: string): void {
+    async leaveConversation(conversationId: string): Promise<void> {
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.warn('SignalR connection not ready, cannot leave conversation');
+            return;
+        }
+
         this.hubConnection.invoke('LeaveConversation', conversationId)
             .catch(err => console.error('Failed to leave conversation:', err));
     }
 
-    markAsRead(conversationId: string, messageId: string): void {
+    async markAsRead(conversationId: string, messageId: string): Promise<void> {
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.warn('SignalR connection not ready, cannot mark as read');
+            return;
+        }
+
         this.hubConnection.invoke('MarkAsRead', { conversationId, messageId })
             .catch(err => console.error('Failed to mark as read:', err));
     }
 
-    sendTypingIndicator(conversationId: string, isTyping: boolean): void {
+    async sendTypingIndicator(conversationId: string, isTyping: boolean): Promise<void> {
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.warn('SignalR connection not ready, cannot send typing indicator');
+            return;
+        }
+
         this.hubConnection.invoke('TypingIndicator', { conversationId, isTyping })
             .catch(err => console.error('Failed to send typing indicator:', err));
     }
 
-    deleteMessage(messageId: string): void {
+    async deleteMessage(messageId: string): Promise<void> {
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.warn('SignalR connection not ready, cannot delete message');
+            return;
+        }
+
         this.hubConnection.invoke('DeleteMessage', messageId)
             .catch(err => console.error('Failed to delete message:', err));
     }
 
-    editMessage(messageId: string, newContent: string): void {
+    async editMessage(messageId: string, newContent: string): Promise<void> {
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.warn('SignalR connection not ready, cannot edit message');
+            return;
+        }
+
         this.hubConnection.invoke('EditMessage', messageId, newContent)
             .catch(err => console.error('Failed to edit message:', err));
     }
@@ -202,7 +343,14 @@ export class ChatService implements OnDestroy {
     /**
      * Get online users
      */
-    getOnlineUsers(): void {
+    async getOnlineUsers(): Promise<void> {
+        const isReady = await this.waitForConnection();
+        
+        if (!isReady) {
+            console.warn('SignalR connection not ready, cannot get online users');
+            return;
+        }
+
         this.hubConnection.invoke('GetOnlineUsers')
             .catch(err => console.error('Failed to get online users:', err));
     }
@@ -261,8 +409,6 @@ export class ChatService implements OnDestroy {
 
     private handleTypingIndicator(userId: string, isTyping: boolean): void {
         // We need to know which conversation the user is typing in
-        // This is a simplified version - in production, you'd need to track this
-        const currentTyping = this.typingUsersSubject.value;
         // For now, we'll just log it
         console.log(`User ${userId} typing: ${isTyping}`);
     }
