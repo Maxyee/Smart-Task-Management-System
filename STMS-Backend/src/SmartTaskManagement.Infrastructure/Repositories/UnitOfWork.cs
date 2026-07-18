@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore.Storage;
 using SmartTaskManagement.Application.Interfaces.Repositories;
+using SmartTaskManagement.Application.Interfaces.Repositories.Chat;
 using SmartTaskManagement.Infrastructure.Data;
 
 namespace SmartTaskManagement.Infrastructure.Repositories
@@ -14,17 +15,31 @@ namespace SmartTaskManagement.Infrastructure.Repositories
             ApplicationDbContext context,
             IUserRepository userRepository,
             IProjectRepository projectRepository,
-            ITaskRepository taskRepository)
+            ITaskRepository taskRepository,
+            IConversationRepository conversationRepository,
+            IMessageRepository messageRepository,
+            IConversationParticipantRepository conversationParticipantRepository,
+            IMessageAttachmentRepository messageAttachmentRepository)
         {
             _context = context;
             Users = userRepository;
             Projects = projectRepository;
             Tasks = taskRepository;
+            Conversations = conversationRepository;
+            Messages = messageRepository;
+            ConversationParticipants = conversationParticipantRepository;
+            MessageAttachments = messageAttachmentRepository;
         }
 
         public IUserRepository Users { get; }
         public IProjectRepository Projects { get; }
         public ITaskRepository Tasks { get; }
+
+        // Chat Repositories
+        public IConversationRepository Conversations { get; }
+        public IMessageRepository Messages { get; }
+        public IConversationParticipantRepository ConversationParticipants { get; }
+        public IMessageAttachmentRepository MessageAttachments { get; }
 
         public async Task<int> CompleteAsync()
         {

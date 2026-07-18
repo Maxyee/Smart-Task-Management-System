@@ -16,7 +16,9 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi;
 using FluentValidation;
 using SmartTaskManagement.Application.Validators;
-
+using SmartTaskManagement.Application.Interfaces.Repositories.Chat;
+using SmartTaskManagement.Infrastructure.Repositories.Chat;
+using SmartTaskManagement.API.Hubs;
 
 namespace SmartTaskManagement.API;
 
@@ -34,7 +36,15 @@ public class Program
             .WriteTo.File("logs/smarttask-.txt", rollingInterval: RollingInterval.Day)
             .CreateLogger();
 
-        builder.Host.UseSerilog();        
+        builder.Host.UseSerilog();
+
+        // Add SignalR
+        builder.Services.AddSignalR(options =>
+        {
+            options.EnableDetailedErrors = true;
+            options.MaximumReceiveMessageSize = 102400; // 100KB
+            options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        });        
 
         // Add services to the container.
         builder.Services.AddAuthorization();
@@ -146,13 +156,26 @@ public class Program
         // Configure Password Hasher
         builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
-        // Register Repositories
+        //// Included Repositories 
+        
+        // User Repository
         builder.Services.AddScoped<IUserRepository, UserRepository>();
-        builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
-        builder.Services.AddScoped<ITaskRepository, TaskRepository>();
-        builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-        // Register Services
+        // Project Repository
+        builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
+
+        // Task Repository
+        builder.Services.AddScoped<ITaskRepository, TaskRepository>();
+
+        // Chat Repositories
+        builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
+        builder.Services.AddScoped<IMessageRepository, MessageRepository>();
+        builder.Services.AddScoped<IConversationParticipantRepository, ConversationParticipantRepository>();
+        builder.Services.AddScoped<IMessageAttachmentRepository, MessageAttachmentRepository>();
+
+        
+
+        // Included Services
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<IAuthService, AuthService>();
         builder.Services.AddScoped<IProjectService, ProjectService>();
@@ -160,6 +183,11 @@ public class Program
         builder.Services.AddScoped<IDashboardService, DashboardService>();
         builder.Services.AddScoped<IAiService, AiService>();
         builder.Services.AddScoped<IUserService, UserService>();
+        builder.Services.AddScoped<IChatService, ChatService>();
+
+
+        // Unit of Work Service
+        builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         // Configure CORS
         builder.Services.AddCors(options =>
@@ -226,6 +254,9 @@ public class Program
 
         // Controllers
         app.MapControllers();
+
+        // Map SignalR Hub - IMPORTANT: This must be after UseRouting
+        app.MapHub<ChatHub>("/chathub");
 
         // Ensure database is created
         using (var scope = app.Services.CreateScope())

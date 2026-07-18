@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { HeaderComponent } from './shared/components/header/header.component';
 import { FooterComponent } from './shared/components/footer/footer.component';
 import { NotificationComponent } from './shared/components/notification/notification.component';
+import { ChatComponent } from './features/chat/chat.component';
 
 @Component({
   selector: 'app-root',
@@ -14,6 +15,7 @@ import { NotificationComponent } from './shared/components/notification/notifica
     HeaderComponent,
     FooterComponent,
     NotificationComponent,
+    ChatComponent  
   ],
   templateUrl: './app.html',
   styleUrl: './app.css'
