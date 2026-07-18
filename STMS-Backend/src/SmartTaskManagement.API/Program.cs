@@ -175,6 +175,7 @@ public class Program
         builder.Services.AddScoped<IDashboardService, DashboardService>();
         builder.Services.AddScoped<IAiService, AiService>();
         builder.Services.AddScoped<IUserService, UserService>();
+        builder.Services.AddScoped<IChatService, ChatService>();
 
 
         // Unit of Work Service
