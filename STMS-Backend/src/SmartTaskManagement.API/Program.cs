@@ -18,7 +18,7 @@ using FluentValidation;
 using SmartTaskManagement.Application.Validators;
 using SmartTaskManagement.Application.Interfaces.Repositories.Chat;
 using SmartTaskManagement.Infrastructure.Repositories.Chat;
-
+using SmartTaskManagement.API.Hubs;
 
 namespace SmartTaskManagement.API;
 
@@ -36,7 +36,15 @@ public class Program
             .WriteTo.File("logs/smarttask-.txt", rollingInterval: RollingInterval.Day)
             .CreateLogger();
 
-        builder.Host.UseSerilog();        
+        builder.Host.UseSerilog();
+
+        // Add SignalR
+        builder.Services.AddSignalR(options =>
+        {
+            options.EnableDetailedErrors = true;
+            options.MaximumReceiveMessageSize = 102400; // 100KB
+            options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        });        
 
         // Add services to the container.
         builder.Services.AddAuthorization();
@@ -246,6 +254,9 @@ public class Program
 
         // Controllers
         app.MapControllers();
+
+        // Map SignalR Hub - IMPORTANT: This must be after UseRouting
+        app.MapHub<ChatHub>("/chathub");
 
         // Ensure database is created
         using (var scope = app.Services.CreateScope())

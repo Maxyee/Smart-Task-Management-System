@@ -27,13 +27,14 @@ namespace SmartTaskManagement.Infrastructure.Repositories.Chat
         public async Task<IEnumerable<Conversation>> GetUserConversationsAsync(Guid userId)
         {
             return await _dbSet
-                .Where(c => !c.IsDeleted && c.Participants.Any(p => p.UserId == userId && p.LeftAt == null))
-                .Include(c => c.Participants)
-                    .ThenInclude(p => p.User)
-                .Include(c => c.LastMessage)
-                    .ThenInclude(m => m.Sender)
-                .OrderByDescending(c => c.LastMessageAt ?? c.UpdatedAt)
-                .ToListAsync();
+            .Where(c => !c.IsDeleted &&
+                c.Participants.Any(p => p.UserId == userId && p.LeftAt == null))
+            .Include(c => c.Participants)
+                .ThenInclude(p => p.User)
+            .Include(c => c.LastMessage)
+                .ThenInclude(m => m.Sender)
+            .OrderByDescending(c => c.LastMessageAt ?? c.UpdatedAt)
+            .ToListAsync();
         }
 
         public async Task<Conversation?> GetDirectConversationAsync(Guid userId1, Guid userId2)
