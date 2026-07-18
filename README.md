@@ -190,6 +190,37 @@ ng serve
 
 ## Backend Setup
 
+create file inside this url : ./STMS-Backend/src/SmartTaskManagement.API/Properties/launchSettings.json
+
+```json
+// launchSettings.json
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5027",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "https": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:7272;http://localhost:5027",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
+
+
+```
+
 create file inside this url : ./STMS-Backend/src/SmartTaskManagement.API/appsettings.json
 
 ```json
