@@ -12,7 +12,7 @@ using SmartTaskManagement.Infrastructure.Data;
 namespace SmartTaskManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260718172118_ChatModule")]
+    [Migration("20260718180503_ChatModule")]
     partial class ChatModule
     {
         /// <inheritdoc />
